@@ -47,10 +47,12 @@ const SynapseScoresheet = (() => {
 
     tbody.innerHTML = '';
     const currentBlockIds = LEVELS[activeLevel] || [];
+    const hasYellow2 = currentBlockIds.includes('yellow2');
 
     ALL_BLOCKS.forEach((block) => {
       if (!currentBlockIds.includes(block.id)) return;
 
+      const blockDisplayName = (block.id === 'yellow1' && !hasYellow2) ? 'Yellow' : block.name;
       const selected = scoreState[block.id] || null;
       const rowScore = getRowScore(block.id);
 
@@ -60,7 +62,7 @@ const SynapseScoresheet = (() => {
 
       tr.innerHTML = `
         <td class="block-cell cell-clickable" data-action="unselect" title="Click to deselect">
-          <span class="block-name">${block.name}</span>
+          <span class="block-name">${blockDisplayName}</span>
         </td>
         <td class="mission-cell cell-clickable" data-type="containment">
           <button class="check-btn ${selected === 'containment' ? 'checked' : ''}" data-block="${block.id}" data-type="containment">
