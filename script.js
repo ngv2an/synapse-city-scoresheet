@@ -23,17 +23,22 @@ const SynapseScoresheet = (() => {
   };
 
   let activeLevel = 'explorer';
+  // scoreState maps blockId to selected option: 'containment' | 'neutralization' | 'analysis' | null
   let scoreState = {};
 
   function initScoreState() {
     scoreState = {};
     ALL_BLOCKS.forEach((block) => {
-      scoreState[block.id] = {
-        containment: false,
-        neutralization: false,
-        analysis: false,
-      };
+      scoreState[block.id] = null;
     });
+  }
+
+  function getRowScore(blockId) {
+    const selected = scoreState[blockId];
+    if (selected && POINTS[selected]) {
+      return POINTS[selected];
+    }
+    return 0;
   }
 
   function renderTable() {
@@ -46,36 +51,34 @@ const SynapseScoresheet = (() => {
     ALL_BLOCKS.forEach((block) => {
       if (!currentBlockIds.includes(block.id)) return;
 
-      const state = scoreState[block.id] || { containment: false, neutralization: false, analysis: false };
+      const selected = scoreState[block.id] || null;
+      const rowScore = getRowScore(block.id);
+
       const tr = document.createElement('tr');
       tr.className = block.rowClass;
-
-      let rowScore = 0;
-      if (state.containment) rowScore += POINTS.containment;
-      if (state.neutralization) rowScore += POINTS.neutralization;
-      if (state.analysis) rowScore += POINTS.analysis;
+      tr.setAttribute('data-block', block.id);
 
       tr.innerHTML = `
-        <td class="block-cell">
+        <td class="block-cell cell-clickable" data-action="unselect" title="Click để bỏ chọn">
           <span class="color-swatch"></span>
           <span class="block-name">${block.name}</span>
         </td>
-        <td>
-          <button class="check-btn ${state.containment ? 'checked' : ''}" data-block="${block.id}" data-type="containment">
-            ${state.containment ? '✓' : ''}
+        <td class="mission-cell cell-clickable" data-type="containment">
+          <button class="check-btn ${selected === 'containment' ? 'checked' : ''}" data-block="${block.id}" data-type="containment">
+            ${selected === 'containment' ? '✓' : ''}
           </button>
         </td>
-        <td>
-          <button class="check-btn ${state.neutralization ? 'checked' : ''}" data-block="${block.id}" data-type="neutralization">
-            ${state.neutralization ? '✓' : ''}
+        <td class="mission-cell cell-clickable" data-type="neutralization">
+          <button class="check-btn ${selected === 'neutralization' ? 'checked' : ''}" data-block="${block.id}" data-type="neutralization">
+            ${selected === 'neutralization' ? '✓' : ''}
           </button>
         </td>
-        <td>
-          <button class="check-btn ${state.analysis ? 'checked' : ''}" data-block="${block.id}" data-type="analysis">
-            ${state.analysis ? '✓' : ''}
+        <td class="mission-cell cell-clickable" data-type="analysis">
+          <button class="check-btn ${selected === 'analysis' ? 'checked' : ''}" data-block="${block.id}" data-type="analysis">
+            ${selected === 'analysis' ? '✓' : ''}
           </button>
         </td>
-        <td class="row-score" id="score-${block.id}">
+        <td class="row-score cell-clickable" data-action="unselect" id="score-${block.id}" title="Click để bỏ chọn">
           ${rowScore}
         </td>
       `;
@@ -91,25 +94,63 @@ const SynapseScoresheet = (() => {
     let total = 0;
 
     currentBlockIds.forEach((bId) => {
-      const state = scoreState[bId];
-      if (!state) return;
-
-      let rowScore = 0;
-      if (state.containment) rowScore += POINTS.containment;
-      if (state.neutralization) rowScore += POINTS.neutralization;
-      if (state.analysis) rowScore += POINTS.analysis;
-
+      const rowScore = getRowScore(bId);
       const rowScoreEl = document.getElementById(`score-${bId}`);
       if (rowScoreEl) {
         rowScoreEl.textContent = rowScore;
       }
-
       total += rowScore;
     });
 
     const totalEl = document.getElementById('total-score');
     if (totalEl) {
       totalEl.textContent = total;
+    }
+  }
+
+  function handleRowClick(blockId, action, missionType) {
+    if (!blockId) return;
+
+    if (action === 'unselect') {
+      // Clicked on Block or Score column -> unselect
+      scoreState[blockId] = null;
+    } else if (missionType) {
+      // Clicked on Containment, Neutralization, or Analysis
+      if (scoreState[blockId] === missionType) {
+        // Clicked the currently selected option again -> unselect
+        scoreState[blockId] = null;
+      } else {
+        // Select this option and deselect any other option in this row
+        scoreState[blockId] = missionType;
+      }
+    }
+
+    // Update row DOM buttons and score
+    updateRowVisuals(blockId);
+    updateTotalScore();
+  }
+
+  function updateRowVisuals(blockId) {
+    const tr = document.querySelector(`tr[data-block="${blockId}"]`);
+    if (!tr) return;
+
+    const selected = scoreState[blockId] || null;
+    const buttons = tr.querySelectorAll('.check-btn');
+
+    buttons.forEach((btn) => {
+      const type = btn.getAttribute('data-type');
+      if (type === selected) {
+        btn.classList.add('checked');
+        btn.textContent = '✓';
+      } else {
+        btn.classList.remove('checked');
+        btn.textContent = '';
+      }
+    });
+
+    const rowScoreEl = document.getElementById(`score-${blockId}`);
+    if (rowScoreEl) {
+      rowScoreEl.textContent = getRowScore(blockId);
     }
   }
 
@@ -132,32 +173,30 @@ const SynapseScoresheet = (() => {
       });
     }
 
-    // Table click delegation for check buttons
+    // Table click delegation for cells, buttons, block name, and score
     const tbody = document.getElementById('table-body');
     if (tbody) {
       tbody.addEventListener('click', (e) => {
-        const btn = e.target.closest('.check-btn');
-        if (!btn) return;
+        const tr = e.target.closest('tr');
+        if (!tr) return;
 
-        const blockId = btn.getAttribute('data-block');
-        const type = btn.getAttribute('data-type');
+        const blockId = tr.getAttribute('data-block');
+        if (!blockId) return;
 
-        if (!scoreState[blockId]) {
-          scoreState[blockId] = { containment: false, neutralization: false, analysis: false };
+        // Check if clicked cell or element is an unselect trigger (Block or Score)
+        const unselectTarget = e.target.closest('[data-action="unselect"]');
+        if (unselectTarget) {
+          handleRowClick(blockId, 'unselect', null);
+          return;
         }
 
-        const isChecked = !scoreState[blockId][type];
-        scoreState[blockId][type] = isChecked;
-
-        if (isChecked) {
-          btn.classList.add('checked');
-          btn.textContent = '✓';
-        } else {
-          btn.classList.remove('checked');
-          btn.textContent = '';
+        // Check if clicked cell or button is a mission type (Containment, Neutralization, Analysis)
+        const missionTarget = e.target.closest('[data-type]');
+        if (missionTarget) {
+          const type = missionTarget.getAttribute('data-type');
+          handleRowClick(blockId, null, type);
+          return;
         }
-
-        updateTotalScore();
       });
     }
 

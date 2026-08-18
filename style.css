@@ -198,6 +198,19 @@ body {
   color: #1f2b38;
 }
 
+/* Clickable cells */
+.cell-clickable {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.block-cell.cell-clickable:active,
+.row-score.cell-clickable:active {
+  opacity: 0.6;
+}
+
 /* Total Score Row / Summary Footer */
 .total-card {
   background: #ffffff;
