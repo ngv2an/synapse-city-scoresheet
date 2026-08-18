@@ -22,9 +22,24 @@ const SynapseScoresheet = (() => {
     master: ['red', 'yellow1', 'yellow2', 'green', 'blue', 'purple', 'mystery'],
   };
 
+  const DISABLED_MISSIONS = {
+    green: ['neutralization'],
+    blue: ['neutralization'],
+    purple: ['neutralization'],
+    red: ['analysis'],
+    yellow1: ['analysis'],
+    yellow2: ['analysis'],
+    mystery: ['analysis'],
+  };
+
   let activeLevel = 'explorer';
   // scoreState maps blockId to selected option: 'containment' | 'neutralization' | 'analysis' | null
   let scoreState = {};
+
+  function isMissionDisabled(blockId, missionType) {
+    const disabledList = DISABLED_MISSIONS[blockId] || [];
+    return disabledList.includes(missionType);
+  }
 
   function initScoreState() {
     scoreState = {};
@@ -35,10 +50,30 @@ const SynapseScoresheet = (() => {
 
   function getRowScore(blockId) {
     const selected = scoreState[blockId];
-    if (selected && POINTS[selected]) {
+    if (selected && POINTS[selected] && !isMissionDisabled(blockId, selected)) {
       return POINTS[selected];
     }
     return 0;
+  }
+
+  function renderMissionCell(blockId, selectedType, type) {
+    const disabled = isMissionDisabled(blockId, type);
+    if (disabled) {
+      return `
+        <td class="mission-cell cell-disabled">
+          <button class="check-btn disabled" disabled aria-disabled="true" tabindex="-1"></button>
+        </td>
+      `;
+    }
+
+    const isChecked = selectedType === type;
+    return `
+      <td class="mission-cell cell-clickable" data-type="${type}">
+        <button class="check-btn ${isChecked ? 'checked' : ''}" data-block="${blockId}" data-type="${type}">
+          ${isChecked ? '✓' : ''}
+        </button>
+      </td>
+    `;
   }
 
   function renderTable() {
@@ -64,21 +99,9 @@ const SynapseScoresheet = (() => {
         <td class="block-cell cell-clickable" data-action="unselect" title="Click to deselect">
           <span class="block-name">${blockDisplayName}</span>
         </td>
-        <td class="mission-cell cell-clickable" data-type="containment">
-          <button class="check-btn ${selected === 'containment' ? 'checked' : ''}" data-block="${block.id}" data-type="containment">
-            ${selected === 'containment' ? '✓' : ''}
-          </button>
-        </td>
-        <td class="mission-cell cell-clickable" data-type="neutralization">
-          <button class="check-btn ${selected === 'neutralization' ? 'checked' : ''}" data-block="${block.id}" data-type="neutralization">
-            ${selected === 'neutralization' ? '✓' : ''}
-          </button>
-        </td>
-        <td class="mission-cell cell-clickable" data-type="analysis">
-          <button class="check-btn ${selected === 'analysis' ? 'checked' : ''}" data-block="${block.id}" data-type="analysis">
-            ${selected === 'analysis' ? '✓' : ''}
-          </button>
-        </td>
+        ${renderMissionCell(block.id, selected, 'containment')}
+        ${renderMissionCell(block.id, selected, 'neutralization')}
+        ${renderMissionCell(block.id, selected, 'analysis')}
         <td class="row-score cell-clickable" data-action="unselect" id="score-${block.id}" title="Click to deselect">
           ${rowScore}
         </td>
@@ -121,6 +144,7 @@ const SynapseScoresheet = (() => {
       // Clicked on Block or Score column -> unselect
       scoreState[blockId] = null;
     } else if (missionType) {
+      if (isMissionDisabled(blockId, missionType)) return;
       // Clicked on Containment, Neutralization, or Analysis
       if (scoreState[blockId] === missionType) {
         // Clicked the currently selected option again -> unselect
@@ -141,7 +165,7 @@ const SynapseScoresheet = (() => {
     if (!tr) return;
 
     const selected = scoreState[blockId] || null;
-    const buttons = tr.querySelectorAll('.check-btn');
+    const buttons = tr.querySelectorAll('.check-btn:not(.disabled)');
 
     buttons.forEach((btn) => {
       const type = btn.getAttribute('data-type');
@@ -203,7 +227,7 @@ const SynapseScoresheet = (() => {
         }
 
         // Check if clicked cell or button is a mission type (Containment, Neutralization, Analysis)
-        const missionTarget = e.target.closest('[data-type]');
+        const missionTarget = e.target.closest('.cell-clickable[data-type]');
         if (missionTarget) {
           const type = missionTarget.getAttribute('data-type');
           handleRowClick(blockId, null, type);
