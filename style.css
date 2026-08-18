@@ -26,13 +26,13 @@ body {
   margin: 0 auto;
 }
 
-/* Header with Synapse City Logo */
-.app-header {
+/* Footer with Synapse City Logo */
+.app-footer {
   text-align: center;
-  padding: 4px 0;
+  padding: 8px 0 4px 0;
 }
 
-.app-header img {
+.app-footer img {
   max-width: 100%;
   height: auto;
   max-height: 48px;
