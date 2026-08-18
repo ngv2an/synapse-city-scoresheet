@@ -98,7 +98,7 @@ const SynapseScoresheet = (() => {
     return `
       <td class="mission-cell cell-clickable" data-type="${type}">
         <button class="check-btn ${isChecked ? 'checked' : ''}" data-block="${blockId}" data-type="${type}">
-          ${isChecked ? `+${points}` : ''}
+          +${points}
         </button>
       </td>
     `;
@@ -161,7 +161,7 @@ const SynapseScoresheet = (() => {
         <td class="mission-cell cell-disabled"></td>
         <td class="mission-cell cell-clickable" data-type="crl">
           <button class="check-btn ${isChecked ? 'checked' : ''}" data-leanbot="${bot.id}" data-type="crl">
-            ${isChecked ? `+${POINTS.crl}` : ''}
+            +${POINTS.crl}
           </button>
         </td>
       `;
@@ -241,12 +241,11 @@ const SynapseScoresheet = (() => {
       const type = btn.getAttribute('data-type');
       if (type === selected) {
         btn.classList.add('checked');
-        const points = getMissionPoints(blockId, type);
-        btn.textContent = `+${points}`;
       } else {
         btn.classList.remove('checked');
-        btn.textContent = '';
       }
+      const points = getMissionPoints(blockId, type);
+      btn.textContent = `+${points}`;
     });
   }
 
@@ -272,11 +271,10 @@ const SynapseScoresheet = (() => {
     if (btn) {
       if (isChecked) {
         btn.classList.add('checked');
-        btn.textContent = `+${POINTS.crl}`;
       } else {
         btn.classList.remove('checked');
-        btn.textContent = '';
       }
+      btn.textContent = `+${POINTS.crl}`;
     }
   }
 

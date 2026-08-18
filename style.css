@@ -108,19 +108,23 @@ body {
 
 /* 4 Columns tailored to content */
 .scoresheet-table th:nth-child(1) {
-  width: 22%; /* Block / Leanbot */
+  width: 22%;
+  /* Block / Leanbot */
 }
 
 .scoresheet-table th:nth-child(2) {
-  width: 26%; /* Containment (45) */
+  width: 26%;
+  /* Containment (45) */
 }
 
 .scoresheet-table th:nth-child(3) {
-  width: 30%; /* Neutralization (160) */
+  width: 30%;
+  /* Neutralization (160) */
 }
 
 .scoresheet-table th:nth-child(4) {
-  width: 22%; /* Analysis (100) / CRL (40) */
+  width: 22%;
+  /* Analysis (100) / CRL (40) */
 }
 
 .scoresheet-table td {
@@ -146,31 +150,52 @@ body {
 }
 
 /* Row Colors matching Synapse City */
-.row-red { background-color: #ffe1df; }
-.row-yellow1, .row-yellow2 { background-color: #fff6bf; }
-.row-green { background-color: #dff6df; }
-.row-blue { background-color: #dce7ff; }
-.row-purple { background-color: #eadfff; }
-.row-mystery { background-color: #ffffff; }
-.row-leanbot { background-color: #ffffff; }
+.row-red {
+  background-color: #ffe1df;
+}
+
+.row-yellow1,
+.row-yellow2 {
+  background-color: #fff6bf;
+}
+
+.row-green {
+  background-color: #dff6df;
+}
+
+.row-blue {
+  background-color: #dce7ff;
+}
+
+.row-purple {
+  background-color: #eadfff;
+}
+
+.row-mystery {
+  background-color: #ffffff;
+}
+
+.row-leanbot {
+  background-color: #ffffff;
+}
 
 /* Checkbox Button Cells (Enabled) */
 .check-btn {
   width: 100%;
   min-height: 42px;
-  border: 2px solid #b2c1d2;
+  border: 2px solid #b8c7d9;
   border-radius: 6px;
   background: #ffffff;
-  color: #64748b;
+  color: #c5c6d0;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   touch-action: manipulation;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: all 0.15s ease;
 }
 
@@ -190,13 +215,11 @@ body {
 /* Disabled Cells (Table 1 & Table 2) */
 .mission-cell.cell-disabled,
 .cell-empty {
-  background: repeating-linear-gradient(
-    -45deg,
-    #cbd5e1,
-    #cbd5e1 6px,
-    #e2e8f0 6px,
-    #e2e8f0 12px
-  ) !important;
+  background: repeating-linear-gradient(-45deg,
+      #cbd5e1,
+      #cbd5e1 6px,
+      #e2e8f0 6px,
+      #e2e8f0 12px) !important;
   cursor: not-allowed;
   user-select: none;
 }
