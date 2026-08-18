@@ -22,7 +22,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(100%, 600px);
+  width: min(100%, 650px);
   margin: 0 auto;
 }
 
@@ -106,17 +106,30 @@ body {
   line-height: 1.2;
 }
 
-.scoresheet-table th:first-child {
-  width: 28%;
+/* 5 Columns tailored to content */
+.scoresheet-table th:nth-child(1) {
+  width: 20%; /* Block / Leanbot */
 }
 
-.scoresheet-table th:last-child {
-  width: 16%;
+.scoresheet-table th:nth-child(2) {
+  width: 24%; /* Containment (45) */
+}
+
+.scoresheet-table th:nth-child(3) {
+  width: 27%; /* Neutralization (160) */
+}
+
+.scoresheet-table th:nth-child(4) {
+  width: 17%; /* Analysis (100) / CRL (40) */
+}
+
+.scoresheet-table th:nth-child(5) {
+  width: 12%; /* Score */
 }
 
 .scoresheet-table td {
   border: 1px solid #cdd5df;
-  padding: 4px 2px;
+  padding: 4px 6px;
   vertical-align: middle;
   height: 50px;
 }
