@@ -118,6 +118,7 @@ body {
   border: 1px solid #cdd5df;
   padding: 4px 2px;
   vertical-align: middle;
+  height: 50px;
 }
 
 /* Block cell */
@@ -145,26 +146,23 @@ body {
 .row-mystery { background-color: #ffffff; }
 .row-leanbot { background-color: #ffffff; }
 
-.cell-empty {
-  background-color: rgba(0, 0, 0, 0.02);
-}
-
-/* Checkbox Button Cells */
+/* Checkbox Button Cells (Enabled) */
 .check-btn {
   width: 100%;
   min-height: 42px;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  border: 2px solid #b2c1d2;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.7);
+  background: #ffffff;
   color: #64748b;
   font-family: inherit;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 900;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   touch-action: manipulation;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   transition: all 0.15s ease;
 }
 
@@ -176,20 +174,21 @@ body {
   background: #007bff;
   border-color: #0056b3;
   color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 123, 255, 0.35);
 }
 
-.check-btn.disabled,
-.check-btn:disabled {
-  background: rgba(0, 0, 0, 0.05);
-  border: 1px dashed rgba(0, 0, 0, 0.15);
+/* Disabled Cells (Table 1 & Table 2) */
+.mission-cell.cell-disabled,
+.cell-empty {
+  background: repeating-linear-gradient(
+    -45deg,
+    #cbd5e1,
+    #cbd5e1 6px,
+    #e2e8f0 6px,
+    #e2e8f0 12px
+  ) !important;
   cursor: not-allowed;
-  opacity: 0.35;
-  pointer-events: none;
-}
-
-.mission-cell.cell-disabled {
-  cursor: not-allowed;
-  background-color: rgba(0, 0, 0, 0.02);
+  user-select: none;
 }
 
 /* Score cell */

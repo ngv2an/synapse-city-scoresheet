@@ -36,13 +36,13 @@ const SynapseScoresheet = (() => {
   };
 
   const DISABLED_MISSIONS = {
-    green: ['neutralization'],
-    blue: ['neutralization'],
-    purple: ['neutralization'],
-    red: ['analysis'],
-    yellow1: ['analysis'],
-    yellow2: ['analysis'],
-    mystery: ['analysis'],
+    red: ['neutralization'],
+    yellow1: ['neutralization'],
+    yellow2: ['neutralization'],
+    mystery: ['neutralization'],
+    green: ['analysis'],
+    blue: ['analysis'],
+    purple: ['analysis'],
   };
 
   let activeLevel = 'explorer';
@@ -83,11 +83,7 @@ const SynapseScoresheet = (() => {
   function renderMissionCell(blockId, selectedType, type) {
     const disabled = isMissionDisabled(blockId, type);
     if (disabled) {
-      return `
-        <td class="mission-cell cell-disabled">
-          <button class="check-btn disabled" disabled aria-disabled="true" tabindex="-1"></button>
-        </td>
-      `;
+      return `<td class="mission-cell cell-disabled"></td>`;
     }
 
     const isChecked = selectedType === type;
@@ -158,8 +154,8 @@ const SynapseScoresheet = (() => {
         <td class="block-cell cell-clickable" data-action="unselect-leanbot" title="Click to deselect">
           <span class="block-name">${displayName}</span>
         </td>
-        <td class="mission-cell cell-empty"></td>
-        <td class="mission-cell cell-empty"></td>
+        <td class="mission-cell cell-disabled"></td>
+        <td class="mission-cell cell-disabled"></td>
         <td class="mission-cell cell-clickable" data-type="crl">
           <button class="check-btn ${isChecked ? 'checked' : ''}" data-leanbot="${bot.id}" data-type="crl">
             ${isChecked ? '✓' : ''}
