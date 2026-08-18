@@ -45,7 +45,7 @@ const SynapseScoresheet = (() => {
     purple: ['analysis'],
   };
 
-  let activeLevel = 'explorer';
+  let activeLevel = 'creator';
   // scoreState maps blockId to selected option: 'containment' | 'neutralization' | 'analysis' | null
   let scoreState = {};
   // leanbotState maps botId to boolean (checked for CRL)
