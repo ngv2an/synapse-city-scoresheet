@@ -56,6 +56,13 @@ const SynapseScoresheet = (() => {
     return disabledList.includes(missionType);
   }
 
+  function getMissionPoints(blockId, missionType) {
+    if (blockId === 'mystery' && missionType === 'analysis') {
+      return 150;
+    }
+    return POINTS[missionType] || 0;
+  }
+
   function initScoreState() {
     scoreState = {};
     ALL_BLOCKS.forEach((block) => {
@@ -70,8 +77,8 @@ const SynapseScoresheet = (() => {
 
   function getRowScore(blockId) {
     const selected = scoreState[blockId];
-    if (selected && POINTS[selected] && !isMissionDisabled(blockId, selected)) {
-      return POINTS[selected];
+    if (selected && !isMissionDisabled(blockId, selected)) {
+      return getMissionPoints(blockId, selected);
     }
     return 0;
   }
@@ -87,10 +94,11 @@ const SynapseScoresheet = (() => {
     }
 
     const isChecked = selectedType === type;
+    const points = getMissionPoints(blockId, type);
     return `
       <td class="mission-cell cell-clickable" data-type="${type}">
         <button class="check-btn ${isChecked ? 'checked' : ''}" data-block="${blockId}" data-type="${type}">
-          ${isChecked ? `+${POINTS[type]}` : ''}
+          ${isChecked ? `+${points}` : ''}
         </button>
       </td>
     `;
@@ -233,7 +241,8 @@ const SynapseScoresheet = (() => {
       const type = btn.getAttribute('data-type');
       if (type === selected) {
         btn.classList.add('checked');
-        btn.textContent = `+${POINTS[type]}`;
+        const points = getMissionPoints(blockId, type);
+        btn.textContent = `+${points}`;
       } else {
         btn.classList.remove('checked');
         btn.textContent = '';
