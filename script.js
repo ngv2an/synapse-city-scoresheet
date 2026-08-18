@@ -368,6 +368,31 @@ const SynapseScoresheet = (() => {
         renderTable();
       });
     }
+
+    // Photo button (Capture Scoresheet Screenshot)
+    const btnPhoto = document.getElementById('btn-photo');
+    if (btnPhoto) {
+      btnPhoto.addEventListener('click', () => {
+        if (typeof html2canvas === 'function') {
+          const appEl = document.querySelector('.scoresheet-app') || document.body;
+          html2canvas(appEl, {
+            scale: 2,
+            backgroundColor: '#e7ebef',
+            useCORS: true,
+          }).then((canvas) => {
+            const link = document.createElement('a');
+            const levelName = activeLevel.charAt(0).toUpperCase() + activeLevel.slice(1);
+            link.download = `SynapseCity_${levelName}_${getTotalScore()}pts.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+          }).catch(() => {
+            window.print();
+          });
+        } else {
+          window.print();
+        }
+      });
+    }
   }
 
   function init() {

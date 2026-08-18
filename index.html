@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Synapse City Scoresheet</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="script.js" defer></script>
 </head>
 
@@ -18,6 +19,16 @@
       <button class="level-tab" data-level="innovator">Innovator</button>
       <button class="level-tab" data-level="master">Master</button>
     </nav>
+
+    <!-- Score & Action Bar -->
+    <div class="score-action-bar">
+      <button class="btn-action btn-reset" id="btn-reset" title="Reset Scores">Reset</button>
+      <div class="total-score-badge">
+        <span class="total-label">Total Score</span>
+        <span class="total-score" id="total-score">0</span>
+      </div>
+      <button class="btn-action btn-photo" id="btn-photo" title="Take Photo / Screenshot">Photo</button>
+    </div>
 
     <!-- Main Table -->
     <section class="table-wrap">
@@ -52,15 +63,6 @@
         </tbody>
       </table>
     </section>
-
-    <!-- Total Score Summary -->
-    <div class="total-card">
-      <span class="total-label">Total Score</span>
-      <span class="total-score" id="total-score">0</span>
-    </div>
-
-    <!-- Reset Button -->
-    <button class="btn-reset" id="btn-reset">Reset</button>
 
     <!-- Footer Logo -->
     <footer class="app-footer">
