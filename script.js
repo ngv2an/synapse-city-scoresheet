@@ -59,7 +59,7 @@ const SynapseScoresheet = (() => {
       tr.setAttribute('data-block', block.id);
 
       tr.innerHTML = `
-        <td class="block-cell cell-clickable" data-action="unselect" title="Click để bỏ chọn">
+        <td class="block-cell cell-clickable" data-action="unselect" title="Click to deselect">
           <span class="block-name">${block.name}</span>
         </td>
         <td class="mission-cell cell-clickable" data-type="containment">
@@ -77,7 +77,7 @@ const SynapseScoresheet = (() => {
             ${selected === 'analysis' ? '✓' : ''}
           </button>
         </td>
-        <td class="row-score cell-clickable" data-action="unselect" id="score-${block.id}" title="Click để bỏ chọn">
+        <td class="row-score cell-clickable" data-action="unselect" id="score-${block.id}" title="Click to deselect">
           ${rowScore}
         </td>
       `;
@@ -86,6 +86,11 @@ const SynapseScoresheet = (() => {
     });
 
     updateTotalScore();
+  }
+
+  function getTotalScore() {
+    const currentBlockIds = LEVELS[activeLevel] || [];
+    return currentBlockIds.reduce((sum, bId) => sum + getRowScore(bId), 0);
   }
 
   function updateTotalScore() {
@@ -164,6 +169,11 @@ const SynapseScoresheet = (() => {
         const level = btn.getAttribute('data-level');
         if (!level || level === activeLevel) return;
 
+        if (getTotalScore() > 0) {
+          const ok = window.confirm('Current score will be lost when switching level. Do you want to continue?');
+          if (!ok) return;
+        }
+
         activeLevel = level;
         levelTabs.querySelectorAll('.level-tab').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
@@ -204,6 +214,10 @@ const SynapseScoresheet = (() => {
     const btnReset = document.getElementById('btn-reset');
     if (btnReset) {
       btnReset.addEventListener('click', () => {
+        if (getTotalScore() > 0) {
+          const ok = window.confirm('Are you sure you want to reset all scores?');
+          if (!ok) return;
+        }
         initScoreState();
         renderTable();
       });
