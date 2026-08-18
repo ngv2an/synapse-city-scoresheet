@@ -66,6 +66,22 @@
       </table>
     </section>
 
+    <!-- Hidden Camera / File Input -->
+    <input type="file" id="photo-input" accept="image/*" capture="environment" style="display: none;">
+
+    <!-- Photo Preview Container (Below 2 Tables) -->
+    <section class="photo-preview-container" id="photo-container" style="display: none;">
+      <div class="photo-card">
+        <div class="photo-header">
+          <span class="photo-title">Mission Photo</span>
+          <button type="button" class="btn-remove-photo" id="btn-remove-photo" title="Xóa ảnh">&times;</button>
+        </div>
+        <div class="photo-img-wrap">
+          <img id="photo-preview" src="" alt="Mission Photo">
+        </div>
+      </div>
+    </section>
+
     <!-- Footer Logo -->
     <footer class="app-footer">
       <img src="image/syncitylogo.D2qIUmBC.png" alt="Synapse City">

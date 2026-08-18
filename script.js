@@ -278,6 +278,15 @@ const SynapseScoresheet = (() => {
     }
   }
 
+  function clearPhoto() {
+    const previewImg = document.getElementById('photo-preview');
+    const container = document.getElementById('photo-container');
+    const photoInput = document.getElementById('photo-input');
+    if (previewImg) previewImg.src = '';
+    if (container) container.style.display = 'none';
+    if (photoInput) photoInput.value = '';
+  }
+
   function setupEvents() {
     // Level Switcher
     const levelTabs = document.getElementById('level-tabs');
@@ -299,6 +308,7 @@ const SynapseScoresheet = (() => {
         btn.classList.add('active');
 
         initScoreState();
+        clearPhoto();
         renderTable();
       });
     }
@@ -365,7 +375,42 @@ const SynapseScoresheet = (() => {
           if (!ok) return;
         }
         initScoreState();
+        clearPhoto();
         renderTable();
+      });
+    }
+
+    // Photo button -> trigger camera capture
+    const btnPhoto = document.getElementById('btn-photo');
+    const photoInput = document.getElementById('photo-input');
+    if (btnPhoto && photoInput) {
+      btnPhoto.addEventListener('click', () => {
+        photoInput.click();
+      });
+
+      photoInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const previewImg = document.getElementById('photo-preview');
+            const container = document.getElementById('photo-container');
+            if (previewImg && container) {
+              previewImg.src = event.target.result;
+              container.style.display = 'block';
+              container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    }
+
+    // Remove Photo button
+    const btnRemovePhoto = document.getElementById('btn-remove-photo');
+    if (btnRemovePhoto) {
+      btnRemovePhoto.addEventListener('click', () => {
+        clearPhoto();
       });
     }
   }
