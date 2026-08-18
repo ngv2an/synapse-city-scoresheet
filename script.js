@@ -60,7 +60,6 @@ const SynapseScoresheet = (() => {
 
       tr.innerHTML = `
         <td class="block-cell cell-clickable" data-action="unselect" title="Click để bỏ chọn">
-          <span class="color-swatch"></span>
           <span class="block-name">${block.name}</span>
         </td>
         <td class="mission-cell cell-clickable" data-type="containment">

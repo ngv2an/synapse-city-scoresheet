@@ -123,44 +123,25 @@ body {
 .block-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-left: 10px;
-  text-align: left;
+  justify-content: center;
+  text-align: center;
   min-height: 48px;
-}
-
-.color-swatch {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  border: 1px solid #1f2b38;
-  border-radius: 50%;
+  padding: 4px 6px;
 }
 
 .block-name {
   color: #1f2b38;
-  font-size: clamp(12px, 3vw, 14px);
+  font-size: clamp(12px, 3.2vw, 14px);
   font-weight: 800;
 }
 
 /* Row Colors matching Synapse City */
 .row-red { background-color: #ffe1df; }
-.row-red .color-swatch { background-color: #E00; }
-
 .row-yellow1, .row-yellow2 { background-color: #fff6bf; }
-.row-yellow1 .color-swatch, .row-yellow2 .color-swatch { background-color: #EE0; }
-
 .row-green { background-color: #dff6df; }
-.row-green .color-swatch { background-color: #0E0; }
-
 .row-blue { background-color: #dce7ff; }
-.row-blue .color-swatch { background-color: #11F; }
-
 .row-purple { background-color: #eadfff; }
-.row-purple .color-swatch { background-color: #71F; }
-
 .row-mystery { background-color: #ffffff; }
-.row-mystery .color-swatch { background-color: #FFF; }
 
 /* Checkbox Button Cells */
 .check-btn {
