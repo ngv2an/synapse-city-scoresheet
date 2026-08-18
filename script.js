@@ -168,6 +168,7 @@ const SynapseScoresheet = (() => {
         levelTabs.querySelectorAll('.level-tab').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
 
+        initScoreState();
         renderTable();
       });
     }
