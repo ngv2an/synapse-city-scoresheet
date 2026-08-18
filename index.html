@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Synapse City Scoresheet</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+
+<body>
+  <main class="scoresheet-app">
+    <!-- Header Logo -->
+    <header class="app-header">
+      <img src="image/syncitylogo.D2qIUmBC.png" alt="Synapse City">
+    </header>
+
+    <!-- 4 Level Buttons -->
+    <nav class="level-tabs" id="level-tabs" aria-label="Level selector">
+      <button class="level-tab active" data-level="explorer">Explorer</button>
+      <button class="level-tab" data-level="creator">Creator</button>
+      <button class="level-tab" data-level="innovator">Innovator</button>
+      <button class="level-tab" data-level="master">Master</button>
+    </nav>
+
+    <!-- Main Table -->
+    <section class="table-wrap">
+      <table class="scoresheet-table">
+        <thead>
+          <tr>
+            <th>Block</th>
+            <th>Containment<br>(45)</th>
+            <th>Neutralization<br>(160)</th>
+            <th>Analysis<br>(100)</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+          <!-- Rows will be populated depending on Level -->
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Total Score Summary -->
+    <div class="total-card">
+      <span class="total-label">Total Score</span>
+      <span class="total-score" id="total-score">0</span>
+    </div>
+
+    <!-- Reset Button -->
+    <button class="btn-reset" id="btn-reset">Reset</button>
+  </main>
+</body>
+
+</html>
