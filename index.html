@@ -11,23 +11,26 @@
 
 <body>
   <main class="scoresheet-app">
-    <!-- 4 Level Buttons -->
-    <nav class="level-tabs" id="level-tabs" aria-label="Level selector">
-      <button class="level-tab" data-level="explorer">Explorer</button>
-      <button class="level-tab active" data-level="creator">Creator</button>
-      <button class="level-tab" data-level="innovator">Innovator</button>
-      <button class="level-tab" data-level="master">Master</button>
-    </nav>
+    <!-- Sticky Top Header (Level selection + Score & Action Bar) -->
+    <header class="sticky-header">
+      <!-- 4 Level Buttons -->
+      <nav class="level-tabs" id="level-tabs" aria-label="Level selector">
+        <button class="level-tab" data-level="explorer">Explorer</button>
+        <button class="level-tab active" data-level="creator">Creator</button>
+        <button class="level-tab" data-level="innovator">Innovator</button>
+        <button class="level-tab" data-level="master">Master</button>
+      </nav>
 
-    <!-- Score & Action Bar -->
-    <div class="score-action-bar">
-      <button class="btn-action btn-reset" id="btn-reset" title="Reset Scores">Reset</button>
-      <div class="total-score-badge">
-        <span class="total-label">Total Score</span>
-        <span class="total-score" id="total-score">0</span>
+      <!-- Score & Action Bar -->
+      <div class="score-action-bar">
+        <button class="btn-action btn-reset" id="btn-reset" title="Reset Scores">Reset</button>
+        <div class="total-score-badge">
+          <span class="total-label">Total Score</span>
+          <span class="total-score" id="total-score">0</span>
+        </div>
+        <button class="btn-action btn-photo" id="btn-photo" title="Photo">Photo</button>
       </div>
-      <button class="btn-action btn-photo" id="btn-photo" title="Take Photo / Screenshot">Photo</button>
-    </div>
+    </header>
 
     <!-- Main Table -->
     <section class="table-wrap">
