@@ -106,25 +106,21 @@ body {
   line-height: 1.2;
 }
 
-/* 5 Columns tailored to content */
+/* 4 Columns tailored to content */
 .scoresheet-table th:nth-child(1) {
-  width: 20%; /* Block / Leanbot */
+  width: 22%; /* Block / Leanbot */
 }
 
 .scoresheet-table th:nth-child(2) {
-  width: 24%; /* Containment (45) */
+  width: 26%; /* Containment (45) */
 }
 
 .scoresheet-table th:nth-child(3) {
-  width: 27%; /* Neutralization (160) */
+  width: 30%; /* Neutralization (160) */
 }
 
 .scoresheet-table th:nth-child(4) {
-  width: 17%; /* Analysis (100) / CRL (40) */
-}
-
-.scoresheet-table th:nth-child(5) {
-  width: 12%; /* Score */
+  width: 22%; /* Analysis (100) / CRL (40) */
 }
 
 .scoresheet-table td {
@@ -167,8 +163,8 @@ body {
   background: #ffffff;
   color: #64748b;
   font-family: inherit;
-  font-size: 18px;
-  font-weight: 900;
+  font-size: 15px;
+  font-weight: 800;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -186,6 +182,8 @@ body {
   background: #007bff;
   border-color: #0056b3;
   color: #ffffff;
+  font-size: 15px;
+  font-weight: 900;
   box-shadow: 0 2px 6px rgba(0, 123, 255, 0.35);
 }
 

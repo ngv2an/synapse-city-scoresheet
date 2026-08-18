@@ -90,7 +90,7 @@ const SynapseScoresheet = (() => {
     return `
       <td class="mission-cell cell-clickable" data-type="${type}">
         <button class="check-btn ${isChecked ? 'checked' : ''}" data-block="${blockId}" data-type="${type}">
-          ${isChecked ? '✓' : ''}
+          ${isChecked ? `+${POINTS[type]}` : ''}
         </button>
       </td>
     `;
@@ -109,7 +109,6 @@ const SynapseScoresheet = (() => {
 
       const blockDisplayName = (block.id === 'yellow1' && !hasYellow2) ? 'Yellow' : block.name;
       const selected = scoreState[block.id] || null;
-      const rowScore = getRowScore(block.id);
 
       const tr = document.createElement('tr');
       tr.className = block.rowClass;
@@ -122,9 +121,6 @@ const SynapseScoresheet = (() => {
         ${renderMissionCell(block.id, selected, 'containment')}
         ${renderMissionCell(block.id, selected, 'neutralization')}
         ${renderMissionCell(block.id, selected, 'analysis')}
-        <td class="row-score cell-clickable" data-action="unselect" id="score-${block.id}" title="Click to deselect">
-          ${rowScore}
-        </td>
       `;
 
       tbody.appendChild(tr);
@@ -144,7 +140,6 @@ const SynapseScoresheet = (() => {
 
       const displayName = (bot.id === 'leanbot1' && !hasMultipleBots) ? 'Leanbot' : bot.name;
       const isChecked = !!leanbotState[bot.id];
-      const rowScore = getLeanbotRowScore(bot.id);
 
       const tr = document.createElement('tr');
       tr.className = bot.rowClass;
@@ -158,11 +153,8 @@ const SynapseScoresheet = (() => {
         <td class="mission-cell cell-disabled"></td>
         <td class="mission-cell cell-clickable" data-type="crl">
           <button class="check-btn ${isChecked ? 'checked' : ''}" data-leanbot="${bot.id}" data-type="crl">
-            ${isChecked ? '✓' : ''}
+            ${isChecked ? `+${POINTS.crl}` : ''}
           </button>
-        </td>
-        <td class="row-score cell-clickable" data-action="unselect-leanbot" id="score-${bot.id}" title="Click to deselect">
-          ${rowScore}
         </td>
       `;
 
@@ -191,24 +183,14 @@ const SynapseScoresheet = (() => {
     let blockTotal = 0;
 
     currentBlockIds.forEach((bId) => {
-      const rowScore = getRowScore(bId);
-      const rowScoreEl = document.getElementById(`score-${bId}`);
-      if (rowScoreEl) {
-        rowScoreEl.textContent = rowScore;
-      }
-      blockTotal += rowScore;
+      blockTotal += getRowScore(bId);
     });
 
     const currentBotIds = LEANBOT_LEVELS[activeLevel] || [];
     let leanbotTotal = 0;
 
     currentBotIds.forEach((botId) => {
-      const rowScore = getLeanbotRowScore(botId);
-      const rowScoreEl = document.getElementById(`score-${botId}`);
-      if (rowScoreEl) {
-        rowScoreEl.textContent = rowScore;
-      }
-      leanbotTotal += rowScore;
+      leanbotTotal += getLeanbotRowScore(botId);
     });
 
     const totalEl = document.getElementById('total-score');
@@ -221,7 +203,7 @@ const SynapseScoresheet = (() => {
     if (!blockId) return;
 
     if (action === 'unselect') {
-      // Clicked on Block or Score column -> unselect
+      // Clicked on Block column -> unselect
       scoreState[blockId] = null;
     } else if (missionType) {
       if (isMissionDisabled(blockId, missionType)) return;
@@ -235,7 +217,7 @@ const SynapseScoresheet = (() => {
       }
     }
 
-    // Update row DOM buttons and score
+    // Update row DOM buttons and total score
     updateRowVisuals(blockId);
     updateTotalScore();
   }
@@ -251,17 +233,12 @@ const SynapseScoresheet = (() => {
       const type = btn.getAttribute('data-type');
       if (type === selected) {
         btn.classList.add('checked');
-        btn.textContent = '✓';
+        btn.textContent = `+${POINTS[type]}`;
       } else {
         btn.classList.remove('checked');
         btn.textContent = '';
       }
     });
-
-    const rowScoreEl = document.getElementById(`score-${blockId}`);
-    if (rowScoreEl) {
-      rowScoreEl.textContent = getRowScore(blockId);
-    }
   }
 
   function handleLeanbotRowClick(botId, action, missionType) {
@@ -286,16 +263,11 @@ const SynapseScoresheet = (() => {
     if (btn) {
       if (isChecked) {
         btn.classList.add('checked');
-        btn.textContent = '✓';
+        btn.textContent = `+${POINTS.crl}`;
       } else {
         btn.classList.remove('checked');
         btn.textContent = '';
       }
-    }
-
-    const rowScoreEl = document.getElementById(`score-${botId}`);
-    if (rowScoreEl) {
-      rowScoreEl.textContent = getLeanbotRowScore(botId);
     }
   }
 
@@ -334,7 +306,7 @@ const SynapseScoresheet = (() => {
         const blockId = tr.getAttribute('data-block');
         if (!blockId) return;
 
-        // Check if clicked cell or element is an unselect trigger (Block or Score)
+        // Check if clicked cell or element is an unselect trigger (Block column)
         const unselectTarget = e.target.closest('[data-action="unselect"]');
         if (unselectTarget) {
           handleRowClick(blockId, 'unselect', null);
