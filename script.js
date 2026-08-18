@@ -3,6 +3,7 @@ const SynapseScoresheet = (() => {
     containment: 45,
     neutralization: 160,
     analysis: 100,
+    crl: 40,
   };
 
   const ALL_BLOCKS = [
@@ -22,6 +23,18 @@ const SynapseScoresheet = (() => {
     master: ['red', 'yellow1', 'yellow2', 'green', 'blue', 'purple', 'mystery'],
   };
 
+  const ALL_LEANBOTS = [
+    { id: 'leanbot1', name: 'Leanbot 1', rowClass: 'row-leanbot' },
+    { id: 'leanbot2', name: 'Leanbot 2', rowClass: 'row-leanbot' },
+  ];
+
+  const LEANBOT_LEVELS = {
+    explorer: ['leanbot1'],
+    creator: ['leanbot1'],
+    innovator: ['leanbot1', 'leanbot2'],
+    master: ['leanbot1', 'leanbot2'],
+  };
+
   const DISABLED_MISSIONS = {
     green: ['neutralization'],
     blue: ['neutralization'],
@@ -35,6 +48,8 @@ const SynapseScoresheet = (() => {
   let activeLevel = 'explorer';
   // scoreState maps blockId to selected option: 'containment' | 'neutralization' | 'analysis' | null
   let scoreState = {};
+  // leanbotState maps botId to boolean (checked for CRL)
+  let leanbotState = {};
 
   function isMissionDisabled(blockId, missionType) {
     const disabledList = DISABLED_MISSIONS[blockId] || [];
@@ -46,6 +61,11 @@ const SynapseScoresheet = (() => {
     ALL_BLOCKS.forEach((block) => {
       scoreState[block.id] = null;
     });
+
+    leanbotState = {};
+    ALL_LEANBOTS.forEach((bot) => {
+      leanbotState[bot.id] = false;
+    });
   }
 
   function getRowScore(blockId) {
@@ -54,6 +74,10 @@ const SynapseScoresheet = (() => {
       return POINTS[selected];
     }
     return 0;
+  }
+
+  function getLeanbotRowScore(botId) {
+    return leanbotState[botId] ? POINTS.crl : 0;
   }
 
   function renderMissionCell(blockId, selectedType, type) {
@@ -76,7 +100,7 @@ const SynapseScoresheet = (() => {
     `;
   }
 
-  function renderTable() {
+  function renderBlockTable() {
     const tbody = document.getElementById('table-body');
     if (!tbody) return;
 
@@ -109,18 +133,66 @@ const SynapseScoresheet = (() => {
 
       tbody.appendChild(tr);
     });
+  }
 
+  function renderLeanbotTable() {
+    const tbody = document.getElementById('leanbot-table-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    const currentBotIds = LEANBOT_LEVELS[activeLevel] || [];
+    const hasMultipleBots = currentBotIds.length > 1;
+
+    ALL_LEANBOTS.forEach((bot) => {
+      if (!currentBotIds.includes(bot.id)) return;
+
+      const displayName = (bot.id === 'leanbot1' && !hasMultipleBots) ? 'Leanbot' : bot.name;
+      const isChecked = !!leanbotState[bot.id];
+      const rowScore = getLeanbotRowScore(bot.id);
+
+      const tr = document.createElement('tr');
+      tr.className = bot.rowClass;
+      tr.setAttribute('data-leanbot', bot.id);
+
+      tr.innerHTML = `
+        <td class="block-cell cell-clickable" data-action="unselect-leanbot" title="Click to deselect">
+          <span class="block-name">${displayName}</span>
+        </td>
+        <td class="mission-cell cell-empty"></td>
+        <td class="mission-cell cell-empty"></td>
+        <td class="mission-cell cell-clickable" data-type="crl">
+          <button class="check-btn ${isChecked ? 'checked' : ''}" data-leanbot="${bot.id}" data-type="crl">
+            ${isChecked ? '✓' : ''}
+          </button>
+        </td>
+        <td class="row-score cell-clickable" data-action="unselect-leanbot" id="score-${bot.id}" title="Click to deselect">
+          ${rowScore}
+        </td>
+      `;
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderTable() {
+    renderBlockTable();
+    renderLeanbotTable();
     updateTotalScore();
   }
 
   function getTotalScore() {
     const currentBlockIds = LEVELS[activeLevel] || [];
-    return currentBlockIds.reduce((sum, bId) => sum + getRowScore(bId), 0);
+    const blockTotal = currentBlockIds.reduce((sum, bId) => sum + getRowScore(bId), 0);
+
+    const currentBotIds = LEANBOT_LEVELS[activeLevel] || [];
+    const leanbotTotal = currentBotIds.reduce((sum, botId) => sum + getLeanbotRowScore(botId), 0);
+
+    return blockTotal + leanbotTotal;
   }
 
   function updateTotalScore() {
     const currentBlockIds = LEVELS[activeLevel] || [];
-    let total = 0;
+    let blockTotal = 0;
 
     currentBlockIds.forEach((bId) => {
       const rowScore = getRowScore(bId);
@@ -128,12 +200,24 @@ const SynapseScoresheet = (() => {
       if (rowScoreEl) {
         rowScoreEl.textContent = rowScore;
       }
-      total += rowScore;
+      blockTotal += rowScore;
+    });
+
+    const currentBotIds = LEANBOT_LEVELS[activeLevel] || [];
+    let leanbotTotal = 0;
+
+    currentBotIds.forEach((botId) => {
+      const rowScore = getLeanbotRowScore(botId);
+      const rowScoreEl = document.getElementById(`score-${botId}`);
+      if (rowScoreEl) {
+        rowScoreEl.textContent = rowScore;
+      }
+      leanbotTotal += rowScore;
     });
 
     const totalEl = document.getElementById('total-score');
     if (totalEl) {
-      totalEl.textContent = total;
+      totalEl.textContent = blockTotal + leanbotTotal;
     }
   }
 
@@ -184,6 +268,41 @@ const SynapseScoresheet = (() => {
     }
   }
 
+  function handleLeanbotRowClick(botId, action, missionType) {
+    if (!botId) return;
+
+    if (action === 'unselect-leanbot') {
+      leanbotState[botId] = false;
+    } else if (missionType === 'crl') {
+      leanbotState[botId] = !leanbotState[botId];
+    }
+
+    updateLeanbotRowVisuals(botId);
+    updateTotalScore();
+  }
+
+  function updateLeanbotRowVisuals(botId) {
+    const tr = document.querySelector(`tr[data-leanbot="${botId}"]`);
+    if (!tr) return;
+
+    const isChecked = !!leanbotState[botId];
+    const btn = tr.querySelector('.check-btn');
+    if (btn) {
+      if (isChecked) {
+        btn.classList.add('checked');
+        btn.textContent = '✓';
+      } else {
+        btn.classList.remove('checked');
+        btn.textContent = '';
+      }
+    }
+
+    const rowScoreEl = document.getElementById(`score-${botId}`);
+    if (rowScoreEl) {
+      rowScoreEl.textContent = getLeanbotRowScore(botId);
+    }
+  }
+
   function setupEvents() {
     // Level Switcher
     const levelTabs = document.getElementById('level-tabs');
@@ -209,7 +328,7 @@ const SynapseScoresheet = (() => {
       });
     }
 
-    // Table click delegation for cells, buttons, block name, and score
+    // Main block table click delegation
     const tbody = document.getElementById('table-body');
     if (tbody) {
       tbody.addEventListener('click', (e) => {
@@ -231,6 +350,32 @@ const SynapseScoresheet = (() => {
         if (missionTarget) {
           const type = missionTarget.getAttribute('data-type');
           handleRowClick(blockId, null, type);
+          return;
+        }
+      });
+    }
+
+    // Leanbot table click delegation
+    const leanbotTbody = document.getElementById('leanbot-table-body');
+    if (leanbotTbody) {
+      leanbotTbody.addEventListener('click', (e) => {
+        const tr = e.target.closest('tr');
+        if (!tr) return;
+
+        const botId = tr.getAttribute('data-leanbot');
+        if (!botId) return;
+
+        // Check if clicked cell or element is an unselect trigger
+        const unselectTarget = e.target.closest('[data-action="unselect-leanbot"]');
+        if (unselectTarget) {
+          handleLeanbotRowClick(botId, 'unselect-leanbot', null);
+          return;
+        }
+
+        // Check if clicked cell or button is CRL
+        const missionTarget = e.target.closest('.cell-clickable[data-type="crl"]');
+        if (missionTarget) {
+          handleLeanbotRowClick(botId, null, 'crl');
           return;
         }
       });

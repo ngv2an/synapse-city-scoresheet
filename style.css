@@ -93,6 +93,7 @@ body {
   font-size: 13px;
   font-weight: 800;
   text-align: center;
+  table-layout: fixed;
 }
 
 .scoresheet-table th {
@@ -142,6 +143,11 @@ body {
 .row-blue { background-color: #dce7ff; }
 .row-purple { background-color: #eadfff; }
 .row-mystery { background-color: #ffffff; }
+.row-leanbot { background-color: #ffffff; }
+
+.cell-empty {
+  background-color: rgba(0, 0, 0, 0.02);
+}
 
 /* Checkbox Button Cells */
 .check-btn {
