@@ -308,10 +308,10 @@ body {
 .check-btn {
   width: 100%;
   min-height: 42px;
-  border: 2px solid #b8c7d9;
+  border: 2px solid rgba(0, 0, 0, 0.12);
   border-radius: 6px;
-  background: #ffffff;
-  color: #c5c6d0;
+  background: rgba(255, 255, 255, 0.45);
+  color: #78889b;
   font-family: inherit;
   font-size: 14px;
   font-weight: 800;
@@ -320,8 +320,15 @@ body {
   align-items: center;
   justify-content: center;
   touch-action: manipulation;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: all 0.15s ease;
+}
+
+.row-mystery .check-btn,
+.row-leanbot .check-btn {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #94a3b8;
 }
 
 .check-btn:active {
@@ -329,9 +336,9 @@ body {
 }
 
 .check-btn.checked {
-  background: #007bff;
-  border-color: #0056b3;
-  color: #ffffff;
+  background: #007bff !important;
+  border-color: #0056b3 !important;
+  color: #ffffff !important;
   font-size: 15px;
   font-weight: 900;
   box-shadow: 0 2px 6px rgba(0, 123, 255, 0.35);
