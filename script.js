@@ -45,11 +45,15 @@ const SynapseScoresheet = (() => {
     purple: ['analysis'],
   };
 
+  const JUDGE_KEY = 'scoresheet.judgeName';
+
   let activeLevel = 'creator';
   // scoreState maps blockId to selected option: 'containment' | 'neutralization' | 'analysis' | null
   let scoreState = {};
   // leanbotState maps botId to boolean (checked for CRL)
   let leanbotState = {};
+  // Compressed data URL of the mission photo, sent along with the score
+  let currentPhotoDataUrl = '';
 
   function isMissionDisabled(blockId, missionType) {
     const disabledList = DISABLED_MISSIONS[blockId] || [];
@@ -285,6 +289,120 @@ const SynapseScoresheet = (() => {
     if (previewImg) previewImg.src = '';
     if (container) container.style.display = 'none';
     if (photoInput) photoInput.value = '';
+    currentPhotoDataUrl = '';
+  }
+
+  // Camera photos run 4-8MB and base64 adds another third on top, so shrink once
+  // and reuse the result for both the preview and the submitted payload.
+  function compressImage(file, maxSize = 1280, quality = 0.7) {
+    return new Promise((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(objectUrl);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Could not read the photo'));
+      };
+
+      img.src = objectUrl;
+    });
+  }
+
+  // submit.js may fail to load (blocked, missing) -> don't take the whole app down with it
+  function pendingCount() {
+    return typeof SheetSubmit === 'undefined' ? 0 : SheetSubmit.pending();
+  }
+
+  function setSubmitStatus(message, tone) {
+    const el = document.getElementById('submit-status');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = 'submit-status' + (tone ? ' is-' + tone : '');
+  }
+
+  function clearForNextTeam() {
+    const teamInput = document.getElementById('team-name');
+    if (teamInput) teamInput.value = '';
+    initScoreState();
+    clearPhoto();
+    renderTable();
+  }
+
+  async function handleSubmit() {
+    const btn = document.getElementById('btn-submit');
+    const teamInput = document.getElementById('team-name');
+    const judgeInput = document.getElementById('judge-name');
+    if (!btn || !teamInput) return;
+
+    const team = teamInput.value.trim();
+    if (!team) {
+      setSubmitStatus('Enter a team name before submitting.', 'error');
+      teamInput.focus();
+      return;
+    }
+
+    const totalScore = getTotalScore();
+    if (totalScore === 0 && !window.confirm('Total score is 0. Submit anyway?')) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    setSubmitStatus('', null);
+
+    try {
+      const result = await SheetSubmit.submit({
+        judge: judgeInput ? judgeInput.value.trim() : '',
+        team: team,
+        level: activeLevel,
+        totalScore: totalScore,
+        scores: Object.assign({}, scoreState, leanbotState),
+        photoBase64: currentPhotoDataUrl,
+      });
+
+      if (result.duplicate) {
+        setSubmitStatus('This run was already recorded.', 'ok');
+      } else {
+        setSubmitStatus('Submitted "' + team + '" — row ' + result.row + '. Cleared for the next team.', 'ok');
+      }
+      clearForNextTeam();
+
+    } catch (err) {
+      const pending = pendingCount();
+      if (pending > 0) {
+        // The run is safely queued, so clear the sheet exactly as on success. Leaving it
+        // filled invites the judge to score over it and submit a second, duplicate row.
+        setSubmitStatus('No connection — saved on this device, ' + pending + ' waiting to send.', 'warn');
+        clearForNextTeam();
+      } else {
+        setSubmitStatus('Submit failed: ' + err.message, 'error');
+      }
+
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Submit';
+    }
+  }
+
+  async function flushQueue(announceIdle) {
+    if (pendingCount() === 0) return;
+
+    const sent = await SheetSubmit.flush();
+    const left = pendingCount();
+
+    if (sent > 0) {
+      setSubmitStatus('Sent ' + sent + ' run(s) saved offline.', 'ok');
+    } else if (left > 0 && announceIdle) {
+      setSubmitStatus(left + ' run(s) waiting for a connection.', 'warn');
+    }
   }
 
   function setupEvents() {
@@ -390,19 +508,21 @@ const SynapseScoresheet = (() => {
 
       photoInput.addEventListener('change', (e) => {
         const file = e.target.files && e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const previewImg = document.getElementById('photo-preview');
-            const container = document.getElementById('photo-container');
-            if (previewImg && container) {
-              previewImg.src = event.target.result;
-              container.style.display = 'block';
-              container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-          };
-          reader.readAsDataURL(file);
-        }
+        if (!file) return;
+
+        compressImage(file).then((dataUrl) => {
+          currentPhotoDataUrl = dataUrl;
+
+          const previewImg = document.getElementById('photo-preview');
+          const container = document.getElementById('photo-container');
+          if (previewImg && container) {
+            previewImg.src = dataUrl;
+            container.style.display = 'block';
+            container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }).catch((err) => {
+          setSubmitStatus(err.message, 'error');
+        });
       });
     }
 
@@ -413,12 +533,39 @@ const SynapseScoresheet = (() => {
         clearPhoto();
       });
     }
+
+    // Judge name stays put across teams, so a judge types it once per session
+    const judgeInput = document.getElementById('judge-name');
+    if (judgeInput) {
+      try {
+        judgeInput.value = localStorage.getItem(JUDGE_KEY) || '';
+      } catch (err) {
+        // localStorage blocked -> only the convenience is lost
+      }
+
+      judgeInput.addEventListener('change', () => {
+        try {
+          localStorage.setItem(JUDGE_KEY, judgeInput.value.trim());
+        } catch (err) {
+          // as above
+        }
+      });
+    }
+
+    // Submit button
+    const btnSubmit = document.getElementById('btn-submit');
+    if (btnSubmit) {
+      btnSubmit.addEventListener('click', handleSubmit);
+    }
+
+    window.addEventListener('online', () => flushQueue(false));
   }
 
   function init() {
     initScoreState();
     renderTable();
     setupEvents();
+    flushQueue(true);
   }
 
   if (document.readyState === 'loading') {

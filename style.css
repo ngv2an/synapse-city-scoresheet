@@ -75,6 +75,114 @@ body {
   color: #ffffff;
 }
 
+/* Team / Judge Entry */
+.entry-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.entry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.entry-label {
+  padding-left: 2px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.entry-field input {
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid #cfd7e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2b38;
+  font-family: inherit;
+  /* 16px keeps iOS Safari from auto-zooming on focus */
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.entry-field input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.18);
+}
+
+.entry-field input::placeholder {
+  color: #a8b4c2;
+  font-weight: 400;
+}
+
+/* Submit to Google Sheet */
+.submit-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.btn-submit {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #0056b3;
+  border-radius: 8px;
+  background: #007bff;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 2px 6px rgba(0, 123, 255, 0.3);
+  transition: all 0.15s ease;
+}
+
+.btn-submit:active {
+  background: #0069d9;
+  transform: scale(0.98);
+}
+
+.btn-submit:disabled {
+  border-color: #94a3b8;
+  background: #94a3b8;
+  box-shadow: none;
+  cursor: default;
+  transform: none;
+}
+
+.submit-status {
+  margin: 0;
+  min-height: 17px;
+  padding: 0 2px;
+  color: #64748b;
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.submit-status.is-ok {
+  color: #15803d;
+}
+
+.submit-status.is-warn {
+  color: #a16207;
+}
+
+.submit-status.is-error {
+  color: #dc2626;
+}
+
 /* Scoresheet Table */
 .table-wrap {
   width: 100%;

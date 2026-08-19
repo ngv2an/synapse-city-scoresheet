@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Synapse City Scoresheet</title>
   <link rel="stylesheet" href="style.css">
+  <script src="submit.js" defer></script>
   <script src="script.js" defer></script>
 </head>
 
@@ -31,6 +32,18 @@
         <button class="btn-action btn-photo" id="btn-photo" title="Photo">Photo</button>
       </div>
     </header>
+
+    <!-- Team / Judge (goes into the submitted row) -->
+    <section class="entry-bar">
+      <label class="entry-field">
+        <span class="entry-label">Team</span>
+        <input type="text" id="team-name" placeholder="Team name" autocomplete="off">
+      </label>
+      <label class="entry-field">
+        <span class="entry-label">Judge</span>
+        <input type="text" id="judge-name" placeholder="Your name" autocomplete="off">
+      </label>
+    </section>
 
     <!-- Main Table -->
     <section class="table-wrap">
@@ -74,12 +87,18 @@
       <div class="photo-card">
         <div class="photo-header">
           <span class="photo-title">Mission Photo</span>
-          <button type="button" class="btn-remove-photo" id="btn-remove-photo" title="Xóa ảnh">&times;</button>
+          <button type="button" class="btn-remove-photo" id="btn-remove-photo" title="Remove photo">&times;</button>
         </div>
         <div class="photo-img-wrap">
           <img id="photo-preview" src="" alt="Mission Photo">
         </div>
       </div>
+    </section>
+
+    <!-- Submit to Google Sheet -->
+    <section class="submit-section">
+      <button type="button" class="btn-submit" id="btn-submit">Submit</button>
+      <p class="submit-status" id="submit-status" role="status" aria-live="polite"></p>
     </section>
 
     <!-- Footer Logo -->
