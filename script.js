@@ -371,7 +371,7 @@ const SynapseScoresheet = (() => {
       if (result.duplicate) {
         setSubmitStatus('This run was already recorded.', 'ok');
       } else {
-        setSubmitStatus('Submitted "' + team + '" — row ' + result.row + '. Cleared for the next team.', 'ok');
+        setSubmitStatus('Submitted "' + team + '" - row ' + result.row + '. Cleared for the next team.', 'ok');
       }
       clearForNextTeam();
 
@@ -380,7 +380,7 @@ const SynapseScoresheet = (() => {
       if (pending > 0) {
         // The run is safely queued, so clear the sheet exactly as on success. Leaving it
         // filled invites the judge to score over it and submit a second, duplicate row.
-        setSubmitStatus('No connection — saved on this device, ' + pending + ' waiting to send.', 'warn');
+        setSubmitStatus('No connection, saved on this device, ' + pending + ' waiting to send.', 'warn');
         clearForNextTeam();
       } else {
         setSubmitStatus('Submit failed: ' + err.message, 'error');
