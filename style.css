@@ -183,6 +183,25 @@ body {
   color: #dc2626;
 }
 
+.sheet-link {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  touch-action: manipulation;
+}
+
+.sheet-link:active {
+  background: #dbeafe;
+}
+
 /* Scoresheet Table */
 .table-wrap {
   width: 100%;
