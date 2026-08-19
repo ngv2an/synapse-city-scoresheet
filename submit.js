@@ -51,13 +51,31 @@ const SheetSubmit = (() => {
   }
 
   async function post(payload) {
-    const res = await fetch(ENDPOINT, {
-      method: 'POST',
-      body: JSON.stringify(Object.assign({ key: SHARED_KEY }, payload)),
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    let res;
 
-    const data = await res.json();
+    try {
+      res = await fetch(ENDPOINT, {
+        method: 'POST',
+        body: JSON.stringify(Object.assign({ key: SHARED_KEY }, payload)),
+      });
+    } catch (err) {
+      // fetch only rejects at the transport layer: offline, DNS, or a CORS block.
+      // Opening the page over file:// lands here too.
+      throw new Error('cannot reach server (offline, or page not served over http) — ' + err.message);
+    }
+
+    if (!res.ok) throw new Error('server returned HTTP ' + res.status);
+
+    // Read as text first: Apps Script sometimes answers with an HTML error page, and
+    // res.json() would then fail with a parse error that hides what actually came back.
+    const raw = await res.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (err) {
+      throw new Error('reply was not JSON — ' + raw.slice(0, 60).replace(/\s+/g, ' '));
+    }
+
     if (!data.ok) throw new Error(data.error || 'unknown');
     return data;
   }

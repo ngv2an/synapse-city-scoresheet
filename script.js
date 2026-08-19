@@ -380,7 +380,7 @@ const SynapseScoresheet = (() => {
       if (pending > 0) {
         // The run is safely queued, so clear the sheet exactly as on success. Leaving it
         // filled invites the judge to score over it and submit a second, duplicate row.
-        setSubmitStatus('No connection, saved on this device, ' + pending + ' waiting to send.', 'warn');
+        setSubmitStatus('Saved on this device (' + pending + ' waiting), ' + err.message, 'warn');
         clearForNextTeam();
       } else {
         setSubmitStatus('Submit failed: ' + err.message, 'error');
