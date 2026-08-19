@@ -16,7 +16,7 @@
 const SHEET_ID = '1hMX0m7L9vZ7zCQpTdZznBpH_2pCRIRHQPoWt_l5C410';
 const SHEET_NAME = 'Scores';
 const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
-const DRIVE_FOLDER_ID = ''; // leave empty to skip photo storage
+const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C'; // leave empty to skip photo storage
 
 const HEADERS = [
   'submissionId', 'submittedAt', 'judge', 'team', 'level', 'totalScore',
