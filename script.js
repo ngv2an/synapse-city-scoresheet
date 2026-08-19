@@ -7,20 +7,20 @@ const SynapseScoresheet = (() => {
   };
 
   const ALL_BLOCKS = [
-    { id: 'red', name: 'Red', rowClass: 'row-red' },
-    { id: 'yellow1', name: 'Yellow 1', rowClass: 'row-yellow1' },
-    { id: 'yellow2', name: 'Yellow 2', rowClass: 'row-yellow2' },
     { id: 'green', name: 'Green', rowClass: 'row-green' },
     { id: 'blue', name: 'Blue', rowClass: 'row-blue' },
     { id: 'purple', name: 'Purple', rowClass: 'row-purple' },
     { id: 'mystery', name: 'Mystery', rowClass: 'row-mystery' },
+    { id: 'red', name: 'Red', rowClass: 'row-red' },
+    { id: 'yellow1', name: 'Yellow 1', rowClass: 'row-yellow1' },
+    { id: 'yellow2', name: 'Yellow 2', rowClass: 'row-yellow2' },
   ];
 
   const LEVELS = {
-    explorer: ['red', 'yellow1', 'green', 'blue'],
-    creator: ['red', 'yellow1', 'green', 'blue', 'purple'],
-    innovator: ['red', 'yellow1', 'yellow2', 'green', 'blue', 'purple'],
-    master: ['red', 'yellow1', 'yellow2', 'green', 'blue', 'purple', 'mystery'],
+    explorer: ['green', 'blue', 'red', 'yellow1'],
+    creator: ['green', 'blue', 'purple', 'red', 'yellow1'],
+    innovator: ['green', 'blue', 'purple', 'red', 'yellow1', 'yellow2'],
+    master: ['green', 'blue', 'purple', 'mystery', 'red', 'yellow1', 'yellow2'],
   };
 
   const ALL_LEANBOTS = [
