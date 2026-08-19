@@ -11,6 +11,8 @@ const SheetSubmit = (() => {
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzp_VdzsT5lCarETWAn8pkTPz7sl9wPxC2KAISPBIdbnrHyxwdxzyVt37PUU7VCNygolQ/exec';
   const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
   const QUEUE_KEY = 'scoresheet.pendingSubmissions';
+  const RETRIES = 2;
+  const RETRY_DELAY = 900;
 
   function isConfigured() {
     return ENDPOINT.indexOf('https://script.google.com/') === 0;
@@ -80,6 +82,35 @@ const SheetSubmit = (() => {
     return data;
   }
 
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Apps Script answers a POST with a 302 to a one-shot user_content_key URL, and that
+   * second hop intermittently 404s — the row is already written by then, so the write
+   * succeeded while the reply is lost. Retrying the same submissionId is free: the server
+   * dedupes it and answers from cache instead of appending, which is both fast and
+   * reliable. So a retry is really a confirmation that the row landed.
+   */
+  async function postWithRetry(item) {
+    let lastErr;
+
+    for (let attempt = 0; attempt <= RETRIES; attempt += 1) {
+      if (attempt > 0) await sleep(RETRY_DELAY * attempt);
+
+      try {
+        const data = await post(item);
+        if (attempt > 0) data.viaRetry = true;
+        return data;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+
+    throw lastErr;
+  }
+
   /**
    * Sends immediately. On a network error the run is queued and the error is rethrown.
    * submissionId is fixed per run, so any number of retries still produces one row.
@@ -95,7 +126,7 @@ const SheetSubmit = (() => {
     );
 
     try {
-      return await post(item);
+      return await postWithRetry(item);
     } catch (err) {
       writeQueue(readQueue().concat([item]));
       throw err;
@@ -114,7 +145,7 @@ const SheetSubmit = (() => {
 
     for (const item of queue) {
       try {
-        await post(item);
+        await postWithRetry(item);
         sent += 1;
       } catch (err) {
         failed.push(item);

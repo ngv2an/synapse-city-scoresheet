@@ -368,10 +368,13 @@ const SynapseScoresheet = (() => {
         photoBase64: currentPhotoDataUrl,
       });
 
-      if (result.duplicate) {
+      // A duplicate that came back from our own retry means the row landed on the first
+      // try and we merely lost the reply, so report it as the success it is.
+      if (result.duplicate && !result.viaRetry) {
         setSubmitStatus('This run was already recorded.', 'ok');
       } else {
-        setSubmitStatus('Submitted "' + team + '" - row ' + result.row + '. Cleared for the next team.', 'ok');
+        const where = result.row ? ' - row ' + result.row : '';
+        setSubmitStatus('Submitted "' + team + '"' + where + '. Cleared for the next team.', 'ok');
       }
       clearForNextTeam();
 

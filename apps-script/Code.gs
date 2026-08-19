@@ -39,9 +39,11 @@ function doPost(e) {
     const id = String(body.submissionId || Utilities.getUuid());
 
     // A flaky network makes the client resend the same run. Same id, no extra row.
+    // The cached value is the row it landed on, so a resend still reports where it went.
     const cache = CacheService.getScriptCache();
-    if (cache.get(id)) {
-      return json({ ok: true, duplicate: true, submissionId: id });
+    const cachedRow = cache.get(id);
+    if (cachedRow) {
+      return json({ ok: true, duplicate: true, submissionId: id, row: Number(cachedRow) });
     }
 
     const sheet = getSheet_();
@@ -68,8 +70,9 @@ function doPost(e) {
       String(body.userAgent || '').slice(0, 200)
     ]);
 
-    cache.put(id, '1', 21600); // 6 hours, long enough to cover a scoring session
-    return json({ ok: true, submissionId: id, row: sheet.getLastRow() });
+    const row = sheet.getLastRow();
+    cache.put(id, String(row), 21600); // 6 hours, long enough to cover a scoring session
+    return json({ ok: true, submissionId: id, row: row });
 
   } catch (err) {
     return json({ ok: false, error: String(err) });
