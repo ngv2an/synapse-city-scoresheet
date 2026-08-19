@@ -52,6 +52,21 @@ const SheetSubmit = (() => {
     }
   }
 
+  /**
+   * Apps Script answers a POST with a 302 to a one-shot script.googleusercontent.com URL
+   * carrying the reply. Safari on iOS reaches that URL and gets a 404 every time, while
+   * Chrome on desktop reads it fine — but the sheet gets the row either way, because the
+   * key in that URL is only minted after doPost has finished. Landing there at all proves
+   * the run executed. Losing the reply is not losing the write.
+   *
+   * A 404 straight from script.google.com/macros/s/.../exec is a different matter — that
+   * is a wrong or undeployed endpoint and must stay an error. res.url tells them apart
+   * because it holds the final URL after redirects.
+   */
+  function isLostReply(res) {
+    return res.url.indexOf('googleusercontent.com') !== -1;
+  }
+
   async function post(payload) {
     let res;
 
@@ -66,7 +81,10 @@ const SheetSubmit = (() => {
       throw new Error('cannot reach server (offline, or page not served over http) — ' + err.message);
     }
 
-    if (!res.ok) throw new Error('server returned HTTP ' + res.status);
+    if (!res.ok) {
+      if (isLostReply(res)) return { ok: true, unconfirmed: true };
+      throw new Error('server returned HTTP ' + res.status);
+    }
 
     // Read as text first: Apps Script sometimes answers with an HTML error page, and
     // res.json() would then fail with a parse error that hides what actually came back.
@@ -75,6 +93,7 @@ const SheetSubmit = (() => {
     try {
       data = JSON.parse(raw);
     } catch (err) {
+      if (isLostReply(res)) return { ok: true, unconfirmed: true };
       throw new Error('reply was not JSON — ' + raw.slice(0, 60).replace(/\s+/g, ' '));
     }
 
