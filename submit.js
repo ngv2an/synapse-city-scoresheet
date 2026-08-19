@@ -8,8 +8,8 @@
  * Fill in ENDPOINT and SHARED_KEY to match apps-script/Code.gs.
  */
 const SheetSubmit = (() => {
-  const ENDPOINT = 'PASTE_WEB_APP_URL';
-  const SHARED_KEY = 'PASTE_A_LONG_RANDOM_STRING';
+  const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzp_VdzsT5lCarETWAn8pkTPz7sl9wPxC2KAISPBIdbnrHyxwdxzyVt37PUU7VCNygolQ/exec';
+  const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
   const QUEUE_KEY = 'scoresheet.pendingSubmissions';
 
   function isConfigured() {

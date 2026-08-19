@@ -13,9 +13,9 @@
  * old code: Deploy › Manage deployments › Edit › Version: New version
  */
 
-const SHEET_ID = 'PASTE_SPREADSHEET_ID';
+const SHEET_ID = '1hMX0m7L9vZ7zCQpTdZznBpH_2pCRIRHQPoWt_l5C410';
 const SHEET_NAME = 'Scores';
-const SHARED_KEY = 'PASTE_A_LONG_RANDOM_STRING';
+const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
 const DRIVE_FOLDER_ID = ''; // leave empty to skip photo storage
 
 const HEADERS = [
