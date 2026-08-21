@@ -8,7 +8,7 @@
  * Fill in ENDPOINT and SHARED_KEY to match apps-script/Code.gs.
  */
 const SheetSubmit = (() => {
-  const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzp_VdzsT5lCarETWAn8pkTPz7sl9wPxC2KAISPBIdbnrHyxwdxzyVt37PUU7VCNygolQ/exec';
+  const ENDPOINT = 'https://script.google.com/a/macros/dtt.vn/s/AKfycbxGYsVbc-uwmsinL0WhPgTtCzQNJfGogaESvtPjvQmsh-qdJOrs2BjPdSZh1PYj33CU5A/exec';
   const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
   const QUEUE_KEY = 'scoresheet.pendingSubmissions';
   const RETRIES = 2;
