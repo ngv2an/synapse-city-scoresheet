@@ -12,8 +12,11 @@
 
 <body>
   <main class="scoresheet-app">
-    <!-- Sticky Top Header (Level selection + Score & Action Bar) -->
+    <!-- Sticky Top Header (Competition + Level selection + Score & Action Bar) -->
     <header class="sticky-header">
+      <!-- Competition Name Banner -->
+      <div class="competition-banner" id="competition-banner">Synapse City</div>
+
       <!-- 4 Level Buttons -->
       <nav class="level-tabs" id="level-tabs" aria-label="Level selector">
         <button class="level-tab" data-level="explorer">Explorer</button>
@@ -33,16 +36,39 @@
       </div>
     </header>
 
-    <!-- Team / Judge (goes into the submitted row) -->
+    <!-- Run Metadata Entry Bar (Judge, Team, Time, Try) -->
     <section class="entry-bar">
-      <label class="entry-field">
-        <span class="entry-label">Team</span>
-        <input type="text" id="team-name" placeholder="Team name" autocomplete="off">
-      </label>
-      <label class="entry-field">
-        <span class="entry-label">Judge</span>
-        <input type="text" id="judge-name" placeholder="Your name" autocomplete="off">
-      </label>
+      <div class="entry-grid">
+        <label class="entry-field">
+          <span class="entry-label">Judge</span>
+          <div class="select-wrap">
+            <select id="judge-select" class="entry-select">
+              <option value="">-- Select Judge --</option>
+            </select>
+            <input type="text" id="judge-custom" class="entry-input custom-input" placeholder="Type judge name" style="display: none;" autocomplete="off">
+          </div>
+        </label>
+
+        <label class="entry-field">
+          <span class="entry-label">Team ID</span>
+          <div class="select-wrap">
+            <select id="team-select" class="entry-select">
+              <option value="">-- Select Team --</option>
+            </select>
+            <input type="text" id="team-custom" class="entry-input custom-input" placeholder="Type team ID" style="display: none;" autocomplete="off">
+          </div>
+        </label>
+
+        <label class="entry-field">
+          <span class="entry-label">Time (m:s.00)</span>
+          <input type="text" id="mission-time" class="entry-input" placeholder="1:59.23" maxlength="8" autocomplete="off">
+        </label>
+
+        <label class="entry-field">
+          <span class="entry-label">Try</span>
+          <input type="number" id="try-count" class="entry-input" min="0" max="99" placeholder="0" value="0">
+        </label>
+      </div>
     </section>
 
     <!-- Main Table -->
@@ -99,13 +125,14 @@
     <section class="submit-section">
       <button type="button" class="btn-submit" id="btn-submit">Submit</button>
       <p class="submit-status" id="submit-status" role="status" aria-live="polite"></p>
-      <a class="sheet-link"
-         href="https://docs.google.com/spreadsheets/d/1hMX0m7L9vZ7zCQpTdZznBpH_2pCRIRHQPoWt_l5C410/edit"
+      <a class="sheet-link" id="view-submission-link"
+         href="https://docs.google.com/spreadsheets/d/1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc/edit"
          target="_blank" rel="noopener">View Submission &#8599;</a>
     </section>
 
-    <!-- Footer Logo -->
+    <!-- Footer Logo & Device Info -->
     <footer class="app-footer">
+      <div class="device-info">Device ID: <span id="device-id-display">---</span></div>
       <img src="image/syncitylogo.D2qIUmBC.png" alt="Synapse City">
     </footer>
   </main>

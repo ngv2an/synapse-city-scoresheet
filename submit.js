@@ -175,9 +175,20 @@ const SheetSubmit = (() => {
     return sent;
   }
 
+  /** Fetches Competition Name, Judges, and Teams from Config tab of the target Sheet */
+  async function fetchMetadata(sheetId) {
+    if (!isConfigured()) return { ok: false, error: 'Endpoint not configured' };
+    const query = sheetId ? `?sheetId=${encodeURIComponent(sheetId)}` : '';
+    const res = await fetch(ENDPOINT + query);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const raw = await res.text();
+    return JSON.parse(raw);
+  }
+
   return {
     submit,
     flush,
+    fetchMetadata,
     isConfigured,
     pending: () => readQueue().length,
   };

@@ -45,6 +45,9 @@ const SynapseScoresheet = (() => {
     purple: ['analysis'],
   };
 
+  const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
+  const METADATA_KEY_PREFIX = 'scoresheet.metadata.';
+  const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
 
   let activeLevel = 'creator';
@@ -54,6 +57,41 @@ const SynapseScoresheet = (() => {
   let leanbotState = {};
   // Compressed data URL of the mission photo, sent along with the score
   let currentPhotoDataUrl = '';
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function getActiveSheetId() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const link = urlParams.get('link') || urlParams.get('sheet') || urlParams.get('id');
+    if (!link) return DEFAULT_SHEET_ID;
+    const match = link.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (match) return match[1];
+    return link.trim();
+  }
+
+  function getOrCreateDeviceId() {
+    let devId = '';
+    try {
+      devId = localStorage.getItem(DEVICE_KEY);
+    } catch (e) {}
+
+    if (!devId) {
+      const part1 = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const part2 = Math.random().toString(36).substring(2, 6).toUpperCase();
+      devId = `DEV-${part1}-${part2}`;
+      try {
+        localStorage.setItem(DEVICE_KEY, devId);
+      } catch (e) {}
+    }
+    return devId;
+  }
 
   function isMissionDisabled(blockId, missionType) {
     const disabledList = DISABLED_MISSIONS[blockId] || [];
@@ -215,21 +253,16 @@ const SynapseScoresheet = (() => {
     if (!blockId) return;
 
     if (action === 'unselect') {
-      // Clicked on Block column -> unselect
       scoreState[blockId] = null;
     } else if (missionType) {
       if (isMissionDisabled(blockId, missionType)) return;
-      // Clicked on Containment, Neutralization, or Analysis
       if (scoreState[blockId] === missionType) {
-        // Clicked the currently selected option again -> unselect
         scoreState[blockId] = null;
       } else {
-        // Select this option and deselect any other option in this row
         scoreState[blockId] = missionType;
       }
     }
 
-    // Update row DOM buttons and total score
     updateRowVisuals(blockId);
     updateTotalScore();
   }
@@ -292,8 +325,6 @@ const SynapseScoresheet = (() => {
     currentPhotoDataUrl = '';
   }
 
-  // Camera photos run 4-8MB and base64 adds another third on top, so shrink once
-  // and reuse the result for both the preview and the submitted payload.
   function compressImage(file, maxSize = 1280, quality = 0.7) {
     return new Promise((resolve, reject) => {
       const objectUrl = URL.createObjectURL(file);
@@ -318,7 +349,6 @@ const SynapseScoresheet = (() => {
     });
   }
 
-  // submit.js may fail to load (blocked, missing) -> don't take the whole app down with it
   function pendingCount() {
     return typeof SheetSubmit === 'undefined' ? 0 : SheetSubmit.pending();
   }
@@ -330,29 +360,144 @@ const SynapseScoresheet = (() => {
     el.className = 'submit-status' + (tone ? ' is-' + tone : '');
   }
 
+  function getSelectedJudge() {
+    const select = document.getElementById('judge-select');
+    const custom = document.getElementById('judge-custom');
+    if (!select) return '';
+    if (select.value === '__custom__') {
+      return custom ? custom.value.trim() : '';
+    }
+    return select.value.trim();
+  }
+
+  function getSelectedTeam() {
+    const select = document.getElementById('team-select');
+    const custom = document.getElementById('team-custom');
+    if (!select) return '';
+    if (select.value === '__custom__') {
+      return custom ? custom.value.trim() : '';
+    }
+    return select.value.trim();
+  }
+
   function clearForNextTeam() {
-    const teamInput = document.getElementById('team-name');
-    if (teamInput) teamInput.value = '';
+    // Reset Team
+    const teamSelect = document.getElementById('team-select');
+    const teamCustom = document.getElementById('team-custom');
+    if (teamSelect) teamSelect.value = '';
+    if (teamCustom) {
+      teamCustom.value = '';
+      teamCustom.style.display = 'none';
+    }
+
+    // Reset Time and Try
+    const timeInput = document.getElementById('mission-time');
+    const tryInput = document.getElementById('try-count');
+    if (timeInput) timeInput.value = '';
+    if (tryInput) tryInput.value = '0';
+
     initScoreState();
     clearPhoto();
     renderTable();
   }
 
+  async function loadMetadata() {
+    const sheetId = getActiveSheetId();
+    const cacheKey = METADATA_KEY_PREFIX + sheetId;
+
+    // Update View Submission link
+    const viewLink = document.getElementById('view-submission-link');
+    if (viewLink) {
+      viewLink.href = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+    }
+
+    // 1. Load from cache immediately
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey));
+      if (cached) applyMetadata(cached);
+    } catch (e) {}
+
+    // 2. Fetch fresh metadata from Apps Script
+    try {
+      const data = await SheetSubmit.fetchMetadata(sheetId);
+      if (data && data.ok) {
+        applyMetadata(data);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(data));
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('Could not fetch sheet metadata:', err);
+    }
+  }
+
+  function applyMetadata(data) {
+    if (data.competition) {
+      const banner = document.getElementById('competition-banner');
+      if (banner) banner.textContent = data.competition;
+    }
+
+    // Populate Judges
+    const judgeSelect = document.getElementById('judge-select');
+    if (judgeSelect && Array.isArray(data.judges)) {
+      const currentVal = getSelectedJudge() || localStorage.getItem(JUDGE_KEY) || '';
+      let opts = '<option value="">-- Select Judge --</option>';
+      data.judges.forEach((j) => {
+        opts += `<option value="${escapeHtml(j)}">${escapeHtml(j)}</option>`;
+      });
+      opts += '<option value="__custom__">+ Other (Type new)...</option>';
+      judgeSelect.innerHTML = opts;
+
+      if (currentVal && Array.from(judgeSelect.options).some((o) => o.value === currentVal)) {
+        judgeSelect.value = currentVal;
+      } else if (currentVal) {
+        judgeSelect.value = '__custom__';
+        const customInput = document.getElementById('judge-custom');
+        if (customInput) {
+          customInput.style.display = 'block';
+          customInput.value = currentVal;
+        }
+      }
+    }
+
+    // Populate Teams
+    const teamSelect = document.getElementById('team-select');
+    if (teamSelect && Array.isArray(data.teams)) {
+      const currentVal = getSelectedTeam() || '';
+      let opts = '<option value="">-- Select Team --</option>';
+      data.teams.forEach((t) => {
+        opts += `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`;
+      });
+      opts += '<option value="__custom__">+ Other (Type new)...</option>';
+      teamSelect.innerHTML = opts;
+
+      if (currentVal && Array.from(teamSelect.options).some((o) => o.value === currentVal)) {
+        teamSelect.value = currentVal;
+      }
+    }
+  }
+
   async function handleSubmit() {
     const btn = document.getElementById('btn-submit');
-    const teamInput = document.getElementById('team-name');
-    const judgeInput = document.getElementById('judge-name');
-    if (!btn || !teamInput) return;
+    const team = getSelectedTeam();
+    const judge = getSelectedJudge();
+    if (!btn) return;
 
-    const team = teamInput.value.trim();
     if (!team) {
-      setSubmitStatus('Enter a team name before submitting.', 'error');
-      teamInput.focus();
+      setSubmitStatus('Select or enter a Team ID before submitting.', 'error');
+      const teamSelect = document.getElementById('team-select');
+      if (teamSelect) teamSelect.focus();
       return;
     }
 
     const totalScore = getTotalScore();
     if (totalScore === 0 && !window.confirm('Total score is 0. Submit anyway?')) return;
+
+    const missionTime = document.getElementById('mission-time') ? document.getElementById('mission-time').value.trim() : '';
+    const tryCount = document.getElementById('try-count') ? document.getElementById('try-count').value.trim() : '0';
+    const competition = document.getElementById('competition-banner') ? document.getElementById('competition-banner').textContent.trim() : 'Synapse City';
+    const deviceId = getOrCreateDeviceId();
+    const sheetId = getActiveSheetId();
 
     btn.disabled = true;
     btn.textContent = 'Sending…';
@@ -360,29 +505,30 @@ const SynapseScoresheet = (() => {
 
     try {
       const result = await SheetSubmit.submit({
-        judge: judgeInput ? judgeInput.value.trim() : '',
+        sheetId: sheetId,
+        competition: competition,
+        judge: judge,
         team: team,
         level: activeLevel,
         totalScore: totalScore,
+        missionTime: missionTime,
+        tryCount: tryCount,
+        deviceId: deviceId,
         scores: Object.assign({}, scoreState, leanbotState),
         photoBase64: currentPhotoDataUrl,
       });
 
-      // A duplicate that came back from our own retry means the row landed on the first
-      // try and we merely lost the reply, so report it as the success it is.
       if (result.duplicate && !result.viaRetry) {
         setSubmitStatus('This run was already recorded.', 'ok');
       } else {
         const where = result.row ? ' - row ' + result.row : '';
-        setSubmitStatus('Submitted "' + team + '"' + where + '. Cleared for the next team.', 'ok');
+        setSubmitStatus('Submitted "' + team + '"' + where + '. Cleared for next run.', 'ok');
       }
       clearForNextTeam();
 
     } catch (err) {
       const pending = pendingCount();
       if (pending > 0) {
-        // The run is safely queued, so clear the sheet exactly as on success. Leaving it
-        // filled invites the judge to score over it and submit a second, duplicate row.
         setSubmitStatus('Saved on this device (' + pending + ' waiting), ' + err.message, 'warn');
         clearForNextTeam();
       } else {
@@ -444,14 +590,12 @@ const SynapseScoresheet = (() => {
         const blockId = tr.getAttribute('data-block');
         if (!blockId) return;
 
-        // Check if clicked cell or element is an unselect trigger (Block column)
         const unselectTarget = e.target.closest('[data-action="unselect"]');
         if (unselectTarget) {
           handleRowClick(blockId, 'unselect', null);
           return;
         }
 
-        // Check if clicked cell or button is a mission type (Containment, Neutralization, Analysis)
         const missionTarget = e.target.closest('.cell-clickable[data-type]');
         if (missionTarget) {
           const type = missionTarget.getAttribute('data-type');
@@ -471,14 +615,12 @@ const SynapseScoresheet = (() => {
         const botId = tr.getAttribute('data-leanbot');
         if (!botId) return;
 
-        // Check if clicked cell or element is an unselect trigger
         const unselectTarget = e.target.closest('[data-action="unselect-leanbot"]');
         if (unselectTarget) {
           handleLeanbotRowClick(botId, 'unselect-leanbot', null);
           return;
         }
 
-        // Check if clicked cell or button is CRL
         const missionTarget = e.target.closest('.cell-clickable[data-type="crl"]');
         if (missionTarget) {
           handleLeanbotRowClick(botId, null, 'crl');
@@ -537,21 +679,49 @@ const SynapseScoresheet = (() => {
       });
     }
 
-    // Judge name stays put across teams, so a judge types it once per session
-    const judgeInput = document.getElementById('judge-name');
-    if (judgeInput) {
-      try {
-        judgeInput.value = localStorage.getItem(JUDGE_KEY) || '';
-      } catch (err) {
-        // localStorage blocked -> only the convenience is lost
-      }
-
-      judgeInput.addEventListener('change', () => {
-        try {
-          localStorage.setItem(JUDGE_KEY, judgeInput.value.trim());
-        } catch (err) {
-          // as above
+    // Judge Select & Custom
+    const judgeSelect = document.getElementById('judge-select');
+    const judgeCustom = document.getElementById('judge-custom');
+    if (judgeSelect && judgeCustom) {
+      judgeSelect.addEventListener('change', () => {
+        if (judgeSelect.value === '__custom__') {
+          judgeCustom.style.display = 'block';
+          judgeCustom.focus();
+        } else {
+          judgeCustom.style.display = 'none';
+          try {
+            localStorage.setItem(JUDGE_KEY, judgeSelect.value);
+          } catch (e) {}
         }
+      });
+
+      judgeCustom.addEventListener('change', () => {
+        try {
+          localStorage.setItem(JUDGE_KEY, judgeCustom.value.trim());
+        } catch (e) {}
+      });
+    }
+
+    // Team Select & Custom
+    const teamSelect = document.getElementById('team-select');
+    const teamCustom = document.getElementById('team-custom');
+    if (teamSelect && teamCustom) {
+      teamSelect.addEventListener('change', () => {
+        if (teamSelect.value === '__custom__') {
+          teamCustom.style.display = 'block';
+          teamCustom.focus();
+        } else {
+          teamCustom.style.display = 'none';
+        }
+      });
+    }
+
+    // Mission Time input auto-sanitizer
+    const timeInput = document.getElementById('mission-time');
+    if (timeInput) {
+      timeInput.addEventListener('input', () => {
+        // Allows digits, colon, dot
+        timeInput.value = timeInput.value.replace(/[^0-9:.]/g, '');
       });
     }
 
@@ -565,9 +735,14 @@ const SynapseScoresheet = (() => {
   }
 
   function init() {
+    const devId = getOrCreateDeviceId();
+    const devDisplay = document.getElementById('device-id-display');
+    if (devDisplay) devDisplay.textContent = devId;
+
     initScoreState();
     renderTable();
     setupEvents();
+    loadMetadata();
     flushQueue(true);
   }
 
