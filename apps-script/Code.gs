@@ -18,6 +18,7 @@ const SHEET_NAME_SCORES = 'Scores';
 const SHEET_NAME_CONFIG = 'Config';
 const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
 const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C';
+const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
 
 /**
  * Column order of the Scores tab. The block columns follow the order the judge sees them
@@ -250,6 +251,9 @@ function doPost(e) {
     ]);
 
     const row = sheet.getLastRow();
+    // appendRow() can apply the default date-time format to the newly written Date even
+    // when the column was formatted already, so format this exact cell after the append.
+    sheet.getRange(row, 1).setNumberFormat(SUBMISSION_TIME_FORMAT);
     cache.put(id, String(row), 21600); // 6 hours
     return json({ ok: true, submissionId: id, row: row });
 
@@ -295,7 +299,7 @@ function writeScoreHeaders_(sheet) {
 }
 
 function formatSubmissionTimeColumn_(sheet) {
-  sheet.getRange('A:A').setNumberFormat('HH:mm:ss');
+  sheet.getRange('A:A').setNumberFormat(SUBMISSION_TIME_FORMAT);
 }
 
 /**
