@@ -509,11 +509,7 @@ const SynapseScoresheet = (() => {
     return select ? select.value.trim() : '';
   }
 
-  function clearForNextTeam() {
-    // Reset Team
-    const teamSelect = document.getElementById('team-select');
-    if (teamSelect) teamSelect.value = '';
-
+  function resetRunState() {
     // Reset Time and Try
     const timeInput = document.getElementById('mission-time');
     if (timeInput) timeInput.value = '';
@@ -522,6 +518,13 @@ const SynapseScoresheet = (() => {
     initScoreState();
     clearPhoto();
     renderTable();
+  }
+
+  function clearForNextTeam() {
+    const teamSelect = document.getElementById('team-select');
+    if (teamSelect) teamSelect.value = '';
+
+    resetRunState();
     clearDraft();
   }
 
@@ -930,7 +933,11 @@ const SynapseScoresheet = (() => {
     const teamSelect = document.getElementById('team-select');
     if (teamSelect) {
       teamSelect.addEventListener('change', () => {
-        restoredTeam = teamSelect.value;
+        const nextTeam = teamSelect.value;
+        const selectedNewTeam = !!nextTeam && nextTeam !== restoredTeam;
+        restoredTeam = nextTeam;
+
+        if (selectedNewTeam) resetRunState();
         saveDraft();
       });
     }
