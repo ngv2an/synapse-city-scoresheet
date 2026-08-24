@@ -54,7 +54,7 @@
           </select>
         </label>
 
-        <label class="entry-field">
+        <label class="entry-field entry-field-time">
           <span class="entry-label">Time (m:s.00)</span>
           <!-- Stays type=text so the mask can hold ':' and '.'; inputmode brings up the
                numeric keypad, and pattern is what older iOS reads for the same thing. -->
@@ -62,10 +62,18 @@
                  placeholder="1:23.45" maxlength="8" autocomplete="off">
         </label>
 
-        <label class="entry-field">
+        <div class="entry-field entry-field-try">
           <span class="entry-label">Try</span>
-          <input type="number" id="try-count" class="entry-input" min="0" max="99" placeholder="0" value="0">
-        </label>
+          <div class="try-options" id="try-options" role="group" aria-label="Try count">
+            <button type="button" class="try-btn active" data-try="0" aria-pressed="true">0</button>
+            <button type="button" class="try-btn" data-try="1" aria-pressed="false">1</button>
+            <button type="button" class="try-btn" data-try="2" aria-pressed="false">2</button>
+            <button type="button" class="try-btn" data-try="3" aria-pressed="false">3</button>
+            <button type="button" class="try-btn try-btn-other" data-try="other" aria-pressed="false">Other</button>
+          </div>
+          <input type="text" id="try-other" class="try-other" inputmode="numeric" pattern="[0-9]*"
+                 maxlength="2" placeholder="Try count" aria-label="Other try count" autocomplete="off" hidden>
+        </div>
       </div>
     </section>
 

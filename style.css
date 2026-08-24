@@ -121,6 +121,50 @@ body {
   display: none;
 }
 
+/* Try: the four common answers as buttons, plus a way out */
+.try-options {
+  display: flex;
+  gap: 4px;
+}
+
+.try-btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 2px;
+  border: 1px solid #cfd7e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2b38;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all 0.15s ease;
+}
+
+/* A word, not a digit, so an even share of the row is not enough. */
+.try-btn-other {
+  flex: 1.7;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.try-btn:active {
+  transform: scale(0.95);
+}
+
+.try-btn.active {
+  border-color: #007bff;
+  background: #007bff;
+  color: #ffffff;
+}
+
+.try-other {
+  margin-top: 4px;
+}
+
 /* Metadata & Run Entry Bar */
 .entry-bar {
   width: 100%;
@@ -128,13 +172,28 @@ body {
 
 .entry-grid {
   display: grid;
-  grid-template-columns: 1.3fr 1.3fr 1fr 0.8fr;
+  grid-template-columns: 1.3fr 1.3fr 1fr 1.6fr;
   gap: 6px;
 }
 
 @media (max-width: 520px) {
+  /* Six tracks rather than two, so the row can be split unevenly: Time needs very little
+     and Try needs room for five buttons. Two equal columns would squeeze Try to ~34px a
+     button, below anything a finger can hit reliably. */
   .entry-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .entry-field {
+    grid-column: span 3;
+  }
+
+  .entry-field-time {
+    grid-column: span 2;
+  }
+
+  .entry-field-try {
+    grid-column: span 4;
   }
 }
 
@@ -166,7 +225,7 @@ body {
   color: #1f2b38;
   font-family: inherit;
   /* 16px font-size prevents iOS Safari auto-zoom */
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -175,6 +234,11 @@ body {
   outline: none;
   border-color: #007bff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.18);
+}
+
+.entry-field input[aria-invalid="true"] {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.16);
 }
 
 .entry-field input::placeholder {

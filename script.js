@@ -61,6 +61,9 @@ const SynapseScoresheet = (() => {
   let leanbotState = {};
   // Compressed data URL of the mission photo, sent along with the score
   let currentPhotoDataUrl = '';
+  // Try: one of the 0-3 buttons, or a free number once Other is picked.
+  let tryValue = 0;
+  let tryIsOther = false;
 
   function escapeHtml(str) {
     return String(str)
@@ -372,6 +375,48 @@ const SynapseScoresheet = (() => {
     return seconds.slice(0, -2) + ':' + seconds.slice(-2) + '.' + centis;
   }
 
+  function renderTryButtons() {
+    const group = document.getElementById('try-options');
+    if (!group) return;
+
+    group.querySelectorAll('.try-btn').forEach((btn) => {
+      const value = btn.getAttribute('data-try');
+      const active = tryIsOther ? value === 'other' : String(tryValue) === value;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', String(active));
+    });
+
+    const other = document.getElementById('try-other');
+    if (other) {
+      other.hidden = !tryIsOther;
+      if (!tryIsOther) other.removeAttribute('aria-invalid');
+    }
+  }
+
+  /** Read at submit time rather than tracked on every keystroke, so there is one truth. */
+  function getTryCount() {
+    if (!tryIsOther) return tryValue;
+
+    const other = document.getElementById('try-other');
+    const raw = other ? other.value.trim() : '';
+    if (!/^\d{1,2}$/.test(raw)) return null;
+
+    const typed = Number(raw);
+    return Number.isInteger(typed) && typed >= 0 && typed <= 99 ? typed : null;
+  }
+
+  function resetTry() {
+    tryValue = 0;
+    tryIsOther = false;
+
+    const other = document.getElementById('try-other');
+    if (other) {
+      other.value = '';
+      other.removeAttribute('aria-invalid');
+    }
+    renderTryButtons();
+  }
+
   function pendingCount() {
     return typeof SheetSubmit === 'undefined' ? 0 : SheetSubmit.pending();
   }
@@ -400,9 +445,8 @@ const SynapseScoresheet = (() => {
 
     // Reset Time and Try
     const timeInput = document.getElementById('mission-time');
-    const tryInput = document.getElementById('try-count');
     if (timeInput) timeInput.value = '';
-    if (tryInput) tryInput.value = '0';
+    resetTry();
 
     initScoreState();
     clearPhoto();
@@ -646,11 +690,21 @@ const SynapseScoresheet = (() => {
       return;
     }
 
+    const tryCount = getTryCount();
+    if (tryCount === null) {
+      setSubmitStatus('Enter a whole Try count from 0 to 99.', 'error');
+      const other = document.getElementById('try-other');
+      if (other) {
+        other.setAttribute('aria-invalid', 'true');
+        other.focus();
+      }
+      return;
+    }
+
     const totalScore = getTotalScore();
     if (totalScore === 0 && !window.confirm('Total score is 0. Submit anyway?')) return;
 
     const missionTime = document.getElementById('mission-time') ? document.getElementById('mission-time').value.trim() : '';
-    const tryCount = document.getElementById('try-count') ? document.getElementById('try-count').value.trim() : '0';
     const deviceId = getOrCreateDeviceId();
     const sheetId = getActiveSheetId();
 
@@ -806,6 +860,39 @@ const SynapseScoresheet = (() => {
       });
     }
 
+    // Try buttons. Other reveals a number field and focuses it, which is what raises the
+    // numeric keypad on a phone - the buttons alone never open one.
+    const tryOptions = document.getElementById('try-options');
+    if (tryOptions) {
+      tryOptions.addEventListener('click', (e) => {
+        const btn = e.target.closest('.try-btn');
+        if (!btn) return;
+
+        const other = document.getElementById('try-other');
+        const hadTryError = other && other.getAttribute('aria-invalid') === 'true';
+        const value = btn.getAttribute('data-try');
+        tryIsOther = value === 'other';
+        if (!tryIsOther) tryValue = Number(value);
+        renderTryButtons();
+        if (hadTryError && !tryIsOther) setSubmitStatus('', null);
+
+        if (tryIsOther && other) {
+          other.focus();
+          other.select();
+        }
+      });
+    }
+
+    const tryOther = document.getElementById('try-other');
+    if (tryOther) {
+      tryOther.addEventListener('input', () => {
+        const hadTryError = tryOther.getAttribute('aria-invalid') === 'true';
+        tryOther.value = tryOther.value.replace(/\D/g, '').slice(0, 2);
+        tryOther.removeAttribute('aria-invalid');
+        if (hadTryError) setSubmitStatus('', null);
+      });
+    }
+
     // Mission Time: digits only, the mask puts the separators in.
     const timeInput = document.getElementById('mission-time');
     if (timeInput) {
@@ -836,6 +923,7 @@ const SynapseScoresheet = (() => {
     initScoreState();
     renderTable();
     renderLevel();
+    renderTryButtons();
     setupEvents();
     loadMetadata();
     flushQueue(true);
