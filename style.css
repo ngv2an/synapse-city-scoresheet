@@ -102,6 +102,10 @@ body {
   color: #b45309;
 }
 
+.meta-round.is-ended {
+  color: #b91c1c;
+}
+
 /* Device clock does not match the competition date */
 .date-warning {
   text-align: center;

@@ -54,7 +54,7 @@ const SynapseScoresheet = (() => {
   // The Sheet decides the level, so this only ever changes from the Config tab.
   let activeLevel = 'creator';
   // Kept around because the round is re-derived from the clock on a timer, not rendered once.
-  let competitionInfo = { competitionDate: '', rounds: [], level: '' };
+  let competitionInfo = { competitionDate: '', rounds: [], endTime: '', level: '' };
   let roundTicker = null;
   // scoreState maps blockId to selected option: 'containment' | 'neutralization' | 'analysis' | null
   let scoreState = {};
@@ -567,31 +567,36 @@ const SynapseScoresheet = (() => {
     return [year < 100 ? 2000 + year : year, Number(m[2]) - 1, Number(m[1])];
   }
 
-  /** '10:00 AM', '2:30 PM' or '14:30' -> minutes since midnight. null when unparseable. */
+  /** '2:30 PM', '14:30' or '14:30:00' -> seconds since midnight. */
   function parseConfigTime(text) {
-    const m = String(text || '').trim().match(/^(\d{1,2}):(\d{2})\s*([AP]M)?$/i);
+    const m = String(text || '').trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)?$/i);
     if (!m) return null;
 
     let hours = Number(m[1]);
     const minutes = Number(m[2]);
-    const suffix = (m[3] || '').toUpperCase();
+    const seconds = Number(m[3] || 0);
+    const suffix = (m[4] || '').toUpperCase();
 
-    if (suffix === 'AM') hours = hours === 12 ? 0 : hours;
-    if (suffix === 'PM') hours = hours === 12 ? 12 : hours + 12;
-    if (hours > 23 || minutes > 59) return null;
+    if (suffix) {
+      if (hours < 1 || hours > 12) return null;
+      if (suffix === 'AM') hours = hours === 12 ? 0 : hours;
+      if (suffix === 'PM') hours = hours === 12 ? 12 : hours + 12;
+    }
+    if (hours > 23 || minutes > 59 || seconds > 59) return null;
 
-    return hours * 60 + minutes;
+    return hours * 3600 + minutes * 60 + seconds;
   }
 
   /**
-   * The clock picks the round: whichever one has already started, latest wins. Nothing is
-   * selectable. Start times are placed on the competition date, so opening the page the day
-   * before still reads "Start at ..." rather than jumping to the last round.
+   * The clock picks one of the two fixed rounds, and End Time closes the schedule. Start
+   * times are placed on the competition date, so opening the page the day before still
+   * reads "Start at ..." rather than jumping to the last round.
    */
   function resolveRound(now) {
     const rounds = (competitionInfo.rounds || [])
-      .map((r) => ({ round: r.round, time: r.time, minutes: parseConfigTime(r.time) }))
-      .filter((r) => r.minutes !== null);
+      .map((r) => ({ round: Number(r.round), time: r.time, seconds: parseConfigTime(r.time) }))
+      .filter((r) => (r.round === 1 || r.round === 2) && r.seconds !== null)
+      .sort((a, b) => a.round - b.round);
 
     if (!rounds.length) return null;
 
@@ -600,12 +605,17 @@ const SynapseScoresheet = (() => {
       ? new Date(date[0], date[1], date[2])
       : new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
+    const endSeconds = parseConfigTime(competitionInfo.endTime);
+    const ended = endSeconds !== null
+      && now.getTime() >= midnight.getTime() + endSeconds * 1000;
+    if (ended) return { current: null, first: rounds[0], ended: true };
+
     let current = null;
     rounds.forEach((r) => {
-      if (now.getTime() >= midnight.getTime() + r.minutes * 60000) current = r;
+      if (now.getTime() >= midnight.getTime() + r.seconds * 1000) current = r;
     });
 
-    return { current: current, first: rounds[0] };
+    return { current: current, first: rounds[0], ended: false };
   }
 
   function renderRound() {
@@ -615,11 +625,17 @@ const SynapseScoresheet = (() => {
     const state = resolveRound(new Date());
     if (!state) {
       el.textContent = '';
+      el.classList.remove('is-pending', 'is-ended');
       return;
     }
 
-    el.textContent = state.current ? 'Round ' + state.current.round : 'Start at ' + state.first.time;
-    el.classList.toggle('is-pending', !state.current);
+    el.textContent = state.ended
+      ? 'Ended at ' + competitionInfo.endTime
+      : state.current
+        ? 'Round ' + state.current.round
+        : 'Start at ' + state.first.time;
+    el.classList.toggle('is-pending', !state.current && !state.ended);
+    el.classList.toggle('is-ended', state.ended);
   }
 
   function formatDeviceDate(date) {
@@ -652,7 +668,7 @@ const SynapseScoresheet = (() => {
       + '. Check the device clock, the round above is unreliable.';
   }
 
-  /** Round number for the row being submitted, blank before the first round starts. */
+  /** Round number for the row, blank before Round 1 and after End Time. */
   function getCurrentRound() {
     const state = resolveRound(new Date());
     return state && state.current ? state.current.round : '';
@@ -672,6 +688,7 @@ const SynapseScoresheet = (() => {
     competitionInfo = {
       competitionDate: data.competitionDate || '',
       rounds: Array.isArray(data.rounds) ? data.rounds : [],
+      endTime: data.endTime || '',
       level: data.level || '',
     };
 

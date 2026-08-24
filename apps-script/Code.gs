@@ -39,24 +39,23 @@ const HEADERS_SCORES = [
  *
  *        A          B                  C   D                   E
  *   1  Judge      Team                     Competition Name    Synapse City 123
- *   2                                      Competition Date    24/08/26
- *   3  Thầy An    Team 01 - Alpha        Round 1 Time        10:00 AM
- *   4  Cô Linh    Team 02 - Beta         Round 2 Time        11:00 AM
- *   5
+ *   2                                      Competition Date    24/08/2026
+ *   3  Thầy An    Team 01 - Alpha        Round 1 Time        14:00:00
+ *   4  Cô Linh    Team 02 - Beta         Round 2 Time        14:30:00
+ *   5                                      End Time            15:00:00
  *   6                                      Level               Creator
  *
  * Nothing is pinned to a fixed cell: the labels are searched for, so extra rows or a
  * shifted block keep working as long as label and value stay side by side.
  *
- * Rounds are open-ended. Any "Round <n> Time" row is picked up and sorted by n, so a
- * third round is a row in the sheet, not an edit here.
+ * The schedule is fixed to Round 1, Round 2, and End Time. Any other Round label is ignored.
  */
 const CONFIG_TEMPLATE = [
   ['Judge', 'Team', '', 'Competition Name', 'Synapse City 123'],
-  ['', '', '', 'Competition Date', '24/08/26'],
-  ['Thầy An', 'Team 01 - Alpha', '', 'Round 1 Time', '10:00 AM'],
-  ['Cô Linh', 'Team 02 - Beta', '', 'Round 2 Time', '11:00 AM'],
-  ['', '', '', '', ''],
+  ['', '', '', 'Competition Date', '24/08/2026'],
+  ['Thầy An', 'Team 01 - Alpha', '', 'Round 1 Time', '14:00:00'],
+  ['Cô Linh', 'Team 02 - Beta', '', 'Round 2 Time', '14:30:00'],
+  ['', '', '', 'End Time', '15:00:00'],
   ['', '', '', 'Level', 'Creator']
 ];
 
@@ -64,18 +63,21 @@ const CONFIG_TEMPLATE = [
 const CONFIG_LABELS = {
   'competition name': 'competition',
   'competition date': 'competitionDate',
+  'end time': 'endTime',
   'level': 'level'
 };
 
-// Matches 'Round 1 Time' .. 'Round 99 Time'; the number decides the order they go out in.
-const CONFIG_ROUND_LABEL = /^round\s*(\d+)\s*time$/;
+const CONFIG_ROUND_LABELS = {
+  'round 1 time': 1,
+  'round 2 time': 2
+};
 
 const CONFIG_JUDGE_HEADERS = ['judge', 'judges', 'judge name'];
 const CONFIG_TEAM_HEADERS = ['team', 'teams', 'team id', 'team name'];
 
 /**
  * GET Handler: Returns everything the scoresheet needs from the Config tab —
- * competition name, date, round times, level, and the Judge / Team lists.
+ * competition name, date, two round times, end time, level, and the Judge / Team lists.
  */
 function doGet(e) {
   try {
@@ -107,6 +109,7 @@ function readConfig_(ss) {
     competition: 'Synapse City',
     competitionDate: '',
     rounds: [],
+    endTime: '',
     level: '',
     judges: readConfigColumn_(data, CONFIG_JUDGE_HEADERS),
     teams: readConfigColumn_(data, CONFIG_TEAM_HEADERS)
@@ -118,10 +121,10 @@ function readConfig_(ss) {
     for (let c = 0; c < data[r].length - 1; c++) {
       const label = normalizeLabel_(data[r][c]);
 
-      const round = CONFIG_ROUND_LABEL.exec(label);
-      if (round) {
+      const roundNumber = CONFIG_ROUND_LABELS[label];
+      if (roundNumber) {
         const time = formatConfigValue_(data[r][c + 1], 'roundTime', tz);
-        if (time) roundTimes[Number(round[1])] = time;
+        if (time) roundTimes[roundNumber] = time;
         continue;
       }
 
@@ -133,9 +136,8 @@ function readConfig_(ss) {
     }
   }
 
-  config.rounds = Object.keys(roundTimes)
-    .map(Number)
-    .sort((a, b) => a - b)
+  config.rounds = [1, 2]
+    .filter((n) => roundTimes[n])
     .map((n) => ({ round: n, time: roundTimes[n] }));
 
   config.level = config.level.toLowerCase();
@@ -172,7 +174,8 @@ function formatConfigValue_(cell, field, tz) {
   if (cell === null || cell === undefined || cell === '') return '';
 
   if (Object.prototype.toString.call(cell) === '[object Date]') {
-    return Utilities.formatDate(cell, tz, field === 'competitionDate' ? 'dd/MM/yy' : 'h:mm a');
+    const pattern = field === 'competitionDate' ? 'dd/MM/yyyy' : 'HH:mm:ss';
+    return Utilities.formatDate(cell, tz, pattern);
   }
   return String(cell).trim();
 }
@@ -182,8 +185,8 @@ function createConfigSheet_(ss) {
   const rows = CONFIG_TEMPLATE.length;
   const cols = CONFIG_TEMPLATE[0].length;
 
-  // Plain text on the value column, set before writing: otherwise Sheets turns 24/08/26
-  // and 10:00 AM into date values and reformats them to whatever the locale prefers.
+  // Plain text on the value column, set before writing: otherwise Sheets turns dates and
+  // times into values and reformats them to whatever the locale prefers.
   sheet.getRange(1, 5, rows, 1).setNumberFormat('@');
   sheet.getRange(1, 1, rows, cols).setValues(CONFIG_TEMPLATE);
 
