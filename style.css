@@ -454,7 +454,9 @@ body {
 .score-action-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Centred rather than spread: with Reset gone the score badge would otherwise drift
+     left and leave a hole in the middle of the bar. */
+  justify-content: center;
   gap: 8px;
   width: 100%;
 }
@@ -472,17 +474,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.btn-reset {
-  border: 1px solid #fca5a5;
-  background: #ffffff;
-  color: #dc2626;
-}
-
-.btn-reset:active {
-  background: #fee2e2;
-  transform: scale(0.95);
 }
 
 .btn-photo {

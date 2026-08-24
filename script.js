@@ -741,20 +741,6 @@ const SynapseScoresheet = (() => {
       });
     }
 
-    // Reset button
-    const btnReset = document.getElementById('btn-reset');
-    if (btnReset) {
-      btnReset.addEventListener('click', () => {
-        if (getTotalScore() > 0) {
-          const ok = window.confirm('Are you sure you want to reset all scores?');
-          if (!ok) return;
-        }
-        initScoreState();
-        clearPhoto();
-        renderTable();
-      });
-    }
-
     // Photo button -> trigger camera capture
     const btnPhoto = document.getElementById('btn-photo');
     const photoInput = document.getElementById('photo-input');
