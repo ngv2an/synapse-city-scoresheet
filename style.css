@@ -103,6 +103,24 @@ body {
   color: #b45309;
 }
 
+/* Device clock does not match the competition date */
+.date-warning {
+  text-align: center;
+  padding: 4px 8px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: clamp(10px, 2.6vw, 12px);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+/* Empty still costs a gap in the flex column, so take it out of flow entirely. */
+.date-warning:empty {
+  display: none;
+}
+
 /* Metadata & Run Entry Bar */
 .entry-bar {
   width: 100%;

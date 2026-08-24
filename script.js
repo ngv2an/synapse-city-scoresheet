@@ -499,6 +499,41 @@ const SynapseScoresheet = (() => {
     el.classList.toggle('is-pending', !state.current);
   }
 
+  function formatDeviceDate(date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return pad(date.getDate()) + '/' + pad(date.getMonth() + 1) + '/' + pad(date.getFullYear() % 100);
+  }
+
+  /**
+   * The round is read off the device clock, so a tablet left on the wrong date reports a
+   * wrong round and says nothing about it. This makes that impossible to miss. It warns
+   * rather than blocks: a judge mid-run needs the sheet more than they need a correct clock.
+   */
+  function renderDateWarning() {
+    const el = document.getElementById('date-warning');
+    if (!el) return;
+
+    const expected = parseConfigDate(competitionInfo.competitionDate);
+    if (!expected) {
+      el.textContent = '';
+      return;
+    }
+
+    const now = new Date();
+    const sameDay = now.getFullYear() === expected[0]
+      && now.getMonth() === expected[1]
+      && now.getDate() === expected[2];
+
+    el.textContent = sameDay ? '' : 'Wrong device date: ' + formatDeviceDate(now)
+      + ' - competition is ' + competitionInfo.competitionDate
+      + '. Check the device clock, the round above is unreliable.';
+  }
+
+  function renderClock() {
+    renderRound();
+    renderDateWarning();
+  }
+
   function renderLevel() {
     const el = document.getElementById('meta-level');
     if (el) el.textContent = activeLevel;
@@ -514,7 +549,7 @@ const SynapseScoresheet = (() => {
     const dateEl = document.getElementById('meta-date');
     if (dateEl) dateEl.textContent = competitionInfo.competitionDate;
 
-    renderRound();
+    renderClock();
   }
 
   /** One Sheet ID means one level, so this is the only thing that can change it. */
@@ -812,7 +847,7 @@ const SynapseScoresheet = (() => {
 
     // A phone that sat locked through the break comes back showing the round it left on.
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) renderRound();
+      if (!document.hidden) renderClock();
     });
   }
 
@@ -828,7 +863,7 @@ const SynapseScoresheet = (() => {
     loadMetadata();
     flushQueue(true);
 
-    if (!roundTicker) roundTicker = setInterval(renderRound, 20000);
+    if (!roundTicker) roundTicker = setInterval(renderClock, 20000);
   }
 
   if (document.readyState === 'loading') {
