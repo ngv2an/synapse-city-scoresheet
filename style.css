@@ -378,6 +378,14 @@ body {
   height: 50px;
 }
 
+.leanbot-label-cell {
+  width: 78%;
+}
+
+.leanbot-action-cell {
+  width: 22%;
+}
+
 /* Block cell */
 .block-cell {
   text-align: center;

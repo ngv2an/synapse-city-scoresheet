@@ -203,12 +203,10 @@ const SynapseScoresheet = (() => {
       tr.setAttribute('data-leanbot', bot.id);
 
       tr.innerHTML = `
-        <td class="block-cell cell-clickable" data-action="unselect-leanbot" title="Click to deselect">
-          <span class="block-name">${displayName}</span>
+        <td colspan="3" class="block-cell leanbot-label-cell">
+          <span class="block-name">${displayName} back to CRL</span>
         </td>
-        <td class="mission-cell cell-disabled"></td>
-        <td class="mission-cell cell-disabled"></td>
-        <td class="mission-cell cell-clickable" data-type="crl">
+        <td class="mission-cell cell-clickable leanbot-action-cell" data-type="crl">
           <button class="check-btn ${isChecked ? 'checked' : ''}" data-leanbot="${bot.id}" data-type="crl">
             ${POINTS.crl}
           </button>
@@ -293,14 +291,10 @@ const SynapseScoresheet = (() => {
     });
   }
 
-  function handleLeanbotRowClick(botId, action, missionType) {
-    if (!botId) return;
+  function handleLeanbotRowClick(botId, missionType) {
+    if (!botId || missionType !== 'crl') return;
 
-    if (action === 'unselect-leanbot') {
-      leanbotState[botId] = false;
-    } else if (missionType === 'crl') {
-      leanbotState[botId] = !leanbotState[botId];
-    }
+    leanbotState[botId] = !leanbotState[botId];
 
     updateLeanbotRowVisuals(botId);
     updateTotalScore();
@@ -800,15 +794,9 @@ const SynapseScoresheet = (() => {
         const botId = tr.getAttribute('data-leanbot');
         if (!botId) return;
 
-        const unselectTarget = e.target.closest('[data-action="unselect-leanbot"]');
-        if (unselectTarget) {
-          handleLeanbotRowClick(botId, 'unselect-leanbot', null);
-          return;
-        }
-
         const missionTarget = e.target.closest('.cell-clickable[data-type="crl"]');
         if (missionTarget) {
-          handleLeanbotRowClick(botId, null, 'crl');
+          handleLeanbotRowClick(botId, 'crl');
           return;
         }
       });
