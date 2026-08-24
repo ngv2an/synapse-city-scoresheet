@@ -19,11 +19,17 @@ const SHEET_NAME_CONFIG = 'Config';
 const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
 const DRIVE_FOLDER_ID = ''; // Optional Google Drive Folder ID to store photos (leave empty to skip Drive upload)
 
+/**
+ * Column order of the Scores tab. The block columns follow the order the judge sees them
+ * in on screen, not the order they happen to sit in the payload.
+ *
+ * Competition and Level are deliberately absent: one Sheet is one competition at one
+ * level, both already named in the Config tab, so a column would repeat them on every row.
+ */
 const HEADERS_SCORES = [
-  'submissionId', 'submittedAt', 'competition', 'judge', 'team', 'level', 'totalScore',
-  'missionTime', 'tryCount', 'deviceId',
-  'red', 'yellow1', 'yellow2', 'green', 'blue', 'purple', 'mystery',
-  'leanbot1', 'leanbot2', 'photoUrl', 'userAgent'
+  'Submission Time', 'Device ID', 'Judge', 'Team', 'Round', 'Score', 'Time', 'Try',
+  'Green', 'Blue', 'Purple', 'Mystery', 'Red', 'Yellow 1', 'Yellow 2', 'Leanbot 1', 'Leanbot 2',
+  'Photo URL', 'Submission ID', 'User Agent'
 ];
 
 /**
@@ -221,26 +227,25 @@ function doPost(e) {
     const s = body.scores || {};
 
     sheet.appendRow([
-      id,
       new Date(),
-      body.competition || '',
+      body.deviceId || '',
       body.judge || '',
       body.team || '',
-      body.level || '',
+      body.round !== undefined && body.round !== '' ? Number(body.round) : '',
       Number(body.totalScore) || 0,
       body.missionTime || '',
       body.tryCount !== undefined && body.tryCount !== '' ? Number(body.tryCount) : '',
-      body.deviceId || '',
-      s.red || '',
-      s.yellow1 || '',
-      s.yellow2 || '',
       s.green || '',
       s.blue || '',
       s.purple || '',
       s.mystery || '',
+      s.red || '',
+      s.yellow1 || '',
+      s.yellow2 || '',
       s.leanbot1 ? 'CRL' : '',
       s.leanbot2 ? 'CRL' : '',
       photoUrl,
+      id,
       String(body.userAgent || '').slice(0, 200)
     ]);
 
@@ -268,14 +273,38 @@ function getScoreSheet_(sheetId) {
   const ss = SpreadsheetApp.openById(sheetId);
   let sheet = ss.getSheetByName(SHEET_NAME_SCORES);
 
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME_SCORES);
-    sheet.appendRow(HEADERS_SCORES);
-    sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, HEADERS_SCORES.length).setFontWeight('bold');
-  }
+  if (!sheet) sheet = ss.insertSheet(SHEET_NAME_SCORES);
+  if (sheet.getLastRow() === 0) writeScoreHeaders_(sheet);
 
   return sheet;
+}
+
+function writeScoreHeaders_(sheet) {
+  sheet.getRange(1, 1, 1, HEADERS_SCORES.length)
+    .setValues([HEADERS_SCORES])
+    .setFontWeight('bold');
+  sheet.setFrozenRows(1);
+
+  // The cell keeps a full timestamp so sorting still works across a day; only the display
+  // drops the date. Applied to the whole column so appended rows inherit it.
+  sheet.getRange('A:A').setNumberFormat('HH:mm:ss');
+}
+
+/**
+ * Starts a fresh Scores tab with the column order above. Run by hand from the editor.
+ * The old tab is renamed, never deleted: its rows follow the previous column order and the
+ * two orders cannot share one tab.
+ */
+function resetScoresSheet() {
+  const ss = SpreadsheetApp.openById(DEFAULT_SHEET_ID);
+  const existing = ss.getSheetByName(SHEET_NAME_SCORES);
+
+  if (existing) {
+    const stamp = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd HHmm');
+    existing.setName(SHEET_NAME_SCORES + ' (old ' + stamp + ')');
+  }
+
+  writeScoreHeaders_(ss.insertSheet(SHEET_NAME_SCORES));
 }
 
 function savePhoto_(id, dataUrl) {

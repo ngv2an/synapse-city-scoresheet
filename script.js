@@ -529,6 +529,12 @@ const SynapseScoresheet = (() => {
       + '. Check the device clock, the round above is unreliable.';
   }
 
+  /** Round number for the row being submitted, blank before the first round starts. */
+  function getCurrentRound() {
+    const state = resolveRound(new Date());
+    return state && state.current ? state.current.round : '';
+  }
+
   function renderClock() {
     renderRound();
     renderDateWarning();
@@ -632,7 +638,6 @@ const SynapseScoresheet = (() => {
 
     const missionTime = document.getElementById('mission-time') ? document.getElementById('mission-time').value.trim() : '';
     const tryCount = document.getElementById('try-count') ? document.getElementById('try-count').value.trim() : '0';
-    const competition = document.getElementById('competition-banner') ? document.getElementById('competition-banner').textContent.trim() : 'Synapse City';
     const deviceId = getOrCreateDeviceId();
     const sheetId = getActiveSheetId();
 
@@ -641,16 +646,17 @@ const SynapseScoresheet = (() => {
     setSubmitStatus('', null);
 
     try {
+      // Competition and level are not sent: one Sheet is one competition at one level, both
+      // already in its Config tab, so a column would repeat them on every single row.
       const result = await SheetSubmit.submit({
         sheetId: sheetId,
-        competition: competition,
+        deviceId: deviceId,
         judge: judge,
         team: team,
-        level: activeLevel,
+        round: getCurrentRound(),
         totalScore: totalScore,
         missionTime: missionTime,
         tryCount: tryCount,
-        deviceId: deviceId,
         scores: Object.assign({}, scoreState, leanbotState),
         photoBase64: currentPhotoDataUrl,
       });
