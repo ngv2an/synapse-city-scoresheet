@@ -12,21 +12,17 @@
 
 <body>
   <main class="scoresheet-app">
-    <!-- Sticky Top Header (Competition + Level selection + Score & Action Bar) -->
+    <!-- Sticky Top Header (Competition info + Score & Action Bar) -->
     <header class="sticky-header">
       <!-- Competition Name Banner -->
       <div class="competition-banner" id="competition-banner">Synapse City</div>
 
-      <!-- Competition Date & Round Times (from the Config tab) -->
-      <div class="competition-meta" id="competition-meta" style="display: none;"></div>
-
-      <!-- 4 Level Buttons -->
-      <nav class="level-tabs" id="level-tabs" aria-label="Level selector">
-        <button class="level-tab" data-level="explorer">Explorer</button>
-        <button class="level-tab active" data-level="creator">Creator</button>
-        <button class="level-tab" data-level="innovator">Innovator</button>
-        <button class="level-tab" data-level="master">Master</button>
-      </nav>
+      <!-- Date, current Round, and Level - all read from the Config tab, none selectable -->
+      <div class="competition-meta" id="competition-meta">
+        <span class="meta-date" id="meta-date"></span>
+        <span class="meta-round" id="meta-round"></span>
+        <span class="meta-level" id="meta-level"></span>
+      </div>
 
       <!-- Score & Action Bar -->
       <div class="score-action-bar">

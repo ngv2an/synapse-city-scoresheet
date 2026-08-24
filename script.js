@@ -50,10 +50,11 @@ const SynapseScoresheet = (() => {
   const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
 
+  // The Sheet decides the level, so this only ever changes from the Config tab.
   let activeLevel = 'creator';
-  // Once a judge picks a level by hand the Config tab stops overriding it, otherwise a
-  // slow metadata fetch would snap the tab back mid-run.
-  let levelPinnedByUser = false;
+  // Kept around because the round is re-derived from the clock on a timer, not rendered once.
+  let competitionInfo = { competitionDate: '', rounds: [], level: '' };
+  let roundTicker = null;
   // scoreState maps blockId to selected option: 'containment' | 'neutralization' | 'analysis' | null
   let scoreState = {};
   // leanbotState maps botId to boolean (checked for CRL)
@@ -434,37 +435,99 @@ const SynapseScoresheet = (() => {
     }
   }
 
-  function applyCompetitionMeta(data) {
-    const el = document.getElementById('competition-meta');
-    if (!el) return;
+  /** 'dd/MM/yy' or 'dd/MM/yyyy' -> [year, monthIndex, day]. null when it is not a date. */
+  function parseConfigDate(text) {
+    const m = String(text || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+    if (!m) return null;
 
-    const parts = [];
-    if (data.competitionDate) parts.push(data.competitionDate);
-
-    // The Config tab decides how many rounds there are, so this just walks what came back.
-    (Array.isArray(data.rounds) ? data.rounds : []).forEach((r) => {
-      if (r && r.time) parts.push('Round ' + r.round + ': ' + r.time);
-    });
-
-    el.textContent = parts.join(' • ');
-    el.style.display = parts.length ? 'block' : 'none';
+    const year = Number(m[3]);
+    return [year < 100 ? 2000 + year : year, Number(m[2]) - 1, Number(m[1])];
   }
 
+  /** '10:00 AM', '2:30 PM' or '14:30' -> minutes since midnight. null when unparseable. */
+  function parseConfigTime(text) {
+    const m = String(text || '').trim().match(/^(\d{1,2}):(\d{2})\s*([AP]M)?$/i);
+    if (!m) return null;
+
+    let hours = Number(m[1]);
+    const minutes = Number(m[2]);
+    const suffix = (m[3] || '').toUpperCase();
+
+    if (suffix === 'AM') hours = hours === 12 ? 0 : hours;
+    if (suffix === 'PM') hours = hours === 12 ? 12 : hours + 12;
+    if (hours > 23 || minutes > 59) return null;
+
+    return hours * 60 + minutes;
+  }
+
+  /**
+   * The clock picks the round: whichever one has already started, latest wins. Nothing is
+   * selectable. Start times are placed on the competition date, so opening the page the day
+   * before still reads "Start at ..." rather than jumping to the last round.
+   */
+  function resolveRound(now) {
+    const rounds = (competitionInfo.rounds || [])
+      .map((r) => ({ round: r.round, time: r.time, minutes: parseConfigTime(r.time) }))
+      .filter((r) => r.minutes !== null);
+
+    if (!rounds.length) return null;
+
+    const date = parseConfigDate(competitionInfo.competitionDate);
+    const midnight = date
+      ? new Date(date[0], date[1], date[2])
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    let current = null;
+    rounds.forEach((r) => {
+      if (now.getTime() >= midnight.getTime() + r.minutes * 60000) current = r;
+    });
+
+    return { current: current, first: rounds[0] };
+  }
+
+  function renderRound() {
+    const el = document.getElementById('meta-round');
+    if (!el) return;
+
+    const state = resolveRound(new Date());
+    if (!state) {
+      el.textContent = '';
+      return;
+    }
+
+    el.textContent = state.current ? 'Round ' + state.current.round : 'Start at ' + state.first.time;
+    el.classList.toggle('is-pending', !state.current);
+  }
+
+  function renderLevel() {
+    const el = document.getElementById('meta-level');
+    if (el) el.textContent = activeLevel;
+  }
+
+  function applyCompetitionMeta(data) {
+    competitionInfo = {
+      competitionDate: data.competitionDate || '',
+      rounds: Array.isArray(data.rounds) ? data.rounds : [],
+      level: data.level || '',
+    };
+
+    const dateEl = document.getElementById('meta-date');
+    if (dateEl) dateEl.textContent = competitionInfo.competitionDate;
+
+    renderRound();
+  }
+
+  /** One Sheet ID means one level, so this is the only thing that can change it. */
   function applyConfiguredLevel(level) {
     const key = String(level || '').toLowerCase();
     if (!LEVELS[key] || key === activeLevel) return;
-    if (levelPinnedByUser || getTotalScore() > 0) return;
+    // Switching level rebuilds the block list, which would throw away a run in progress.
+    if (getTotalScore() > 0) return;
 
     activeLevel = key;
-    const tabs = document.getElementById('level-tabs');
-    if (tabs) {
-      tabs.querySelectorAll('.level-tab').forEach((b) => {
-        b.classList.toggle('active', b.getAttribute('data-level') === key);
-      });
-    }
-
     initScoreState();
     renderTable();
+    renderLevel();
   }
 
   function applyMetadata(data) {
@@ -594,32 +657,6 @@ const SynapseScoresheet = (() => {
   }
 
   function setupEvents() {
-    // Level Switcher
-    const levelTabs = document.getElementById('level-tabs');
-    if (levelTabs) {
-      levelTabs.addEventListener('click', (e) => {
-        const btn = e.target.closest('.level-tab');
-        if (!btn) return;
-
-        const level = btn.getAttribute('data-level');
-        if (!level || level === activeLevel) return;
-
-        if (getTotalScore() > 0) {
-          const ok = window.confirm('Current score will be lost when switching level. Do you want to continue?');
-          if (!ok) return;
-        }
-
-        activeLevel = level;
-        levelPinnedByUser = true;
-        levelTabs.querySelectorAll('.level-tab').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-
-        initScoreState();
-        clearPhoto();
-        renderTable();
-      });
-    }
-
     // Main block table click delegation
     const tbody = document.getElementById('table-body');
     if (tbody) {
@@ -772,6 +809,11 @@ const SynapseScoresheet = (() => {
     }
 
     window.addEventListener('online', () => flushQueue(false));
+
+    // A phone that sat locked through the break comes back showing the round it left on.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) renderRound();
+    });
   }
 
   function init() {
@@ -781,9 +823,12 @@ const SynapseScoresheet = (() => {
 
     initScoreState();
     renderTable();
+    renderLevel();
     setupEvents();
     loadMetadata();
     flushQueue(true);
+
+    if (!roundTicker) roundTicker = setInterval(renderRound, 20000);
   }
 
   if (document.readyState === 'loading') {
