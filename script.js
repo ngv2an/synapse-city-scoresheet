@@ -366,33 +366,18 @@ const SynapseScoresheet = (() => {
 
   function getSelectedJudge() {
     const select = document.getElementById('judge-select');
-    const custom = document.getElementById('judge-custom');
-    if (!select) return '';
-    if (select.value === '__custom__') {
-      return custom ? custom.value.trim() : '';
-    }
-    return select.value.trim();
+    return select ? select.value.trim() : '';
   }
 
   function getSelectedTeam() {
     const select = document.getElementById('team-select');
-    const custom = document.getElementById('team-custom');
-    if (!select) return '';
-    if (select.value === '__custom__') {
-      return custom ? custom.value.trim() : '';
-    }
-    return select.value.trim();
+    return select ? select.value.trim() : '';
   }
 
   function clearForNextTeam() {
     // Reset Team
     const teamSelect = document.getElementById('team-select');
-    const teamCustom = document.getElementById('team-custom');
     if (teamSelect) teamSelect.value = '';
-    if (teamCustom) {
-      teamCustom.value = '';
-      teamCustom.style.display = 'none';
-    }
 
     // Reset Time and Try
     const timeInput = document.getElementById('mission-time');
@@ -571,6 +556,15 @@ const SynapseScoresheet = (() => {
     renderLevel();
   }
 
+  /**
+   * Assigning a value no option carries leaves the select blank with selectedIndex -1, which
+   * hides the placeholder too. Checking first keeps "-- Select Judge --" on screen when a
+   * name has been taken out of the Config tab.
+   */
+  function optionExists(select, value) {
+    return !!value && Array.from(select.options).some((o) => o.value === value);
+  }
+
   function applyMetadata(data) {
     if (data.competition) {
       const banner = document.getElementById('competition-banner');
@@ -580,43 +574,34 @@ const SynapseScoresheet = (() => {
     applyCompetitionMeta(data);
     applyConfiguredLevel(data.level);
 
-    // Populate Judges
+    // Populate Judges. The Config tab is the whole list - there is no free-text fallback,
+    // so a name missing from it cannot be scored under and has to be added to the Sheet.
     const judgeSelect = document.getElementById('judge-select');
     if (judgeSelect && Array.isArray(data.judges)) {
-      const currentVal = getSelectedJudge() || localStorage.getItem(JUDGE_KEY) || '';
+      let saved = '';
+      try {
+        saved = localStorage.getItem(JUDGE_KEY) || '';
+      } catch (e) {}
+
+      const currentVal = getSelectedJudge() || saved;
       let opts = '<option value="">-- Select Judge --</option>';
       data.judges.forEach((j) => {
         opts += `<option value="${escapeHtml(j)}">${escapeHtml(j)}</option>`;
       });
-      opts += '<option value="__custom__">+ Other (Type new)...</option>';
       judgeSelect.innerHTML = opts;
-
-      if (currentVal && Array.from(judgeSelect.options).some((o) => o.value === currentVal)) {
-        judgeSelect.value = currentVal;
-      } else if (currentVal) {
-        judgeSelect.value = '__custom__';
-        const customInput = document.getElementById('judge-custom');
-        if (customInput) {
-          customInput.style.display = 'block';
-          customInput.value = currentVal;
-        }
-      }
+      judgeSelect.value = optionExists(judgeSelect, currentVal) ? currentVal : '';
     }
 
     // Populate Teams
     const teamSelect = document.getElementById('team-select');
     if (teamSelect && Array.isArray(data.teams)) {
-      const currentVal = getSelectedTeam() || '';
+      const currentVal = getSelectedTeam();
       let opts = '<option value="">-- Select Team --</option>';
       data.teams.forEach((t) => {
         opts += `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`;
       });
-      opts += '<option value="__custom__">+ Other (Type new)...</option>';
       teamSelect.innerHTML = opts;
-
-      if (currentVal && Array.from(teamSelect.options).some((o) => o.value === currentVal)) {
-        teamSelect.value = currentVal;
-      }
+      teamSelect.value = optionExists(teamSelect, currentVal) ? currentVal : '';
     }
   }
 
@@ -626,8 +611,17 @@ const SynapseScoresheet = (() => {
     const judge = getSelectedJudge();
     if (!btn) return;
 
+    // Judge is checked first: it is picked once at the start of a session, so an empty one
+    // means the judge never set up this device and every run after it would be unattributed.
+    if (!judge) {
+      setSubmitStatus('Select a Judge before submitting.', 'error');
+      const judgeSelect = document.getElementById('judge-select');
+      if (judgeSelect) judgeSelect.focus();
+      return;
+    }
+
     if (!team) {
-      setSubmitStatus('Select or enter a Team ID before submitting.', 'error');
+      setSubmitStatus('Select a Team ID before submitting.', 'error');
       const teamSelect = document.getElementById('team-select');
       if (teamSelect) teamSelect.focus();
       return;
@@ -783,40 +777,13 @@ const SynapseScoresheet = (() => {
       });
     }
 
-    // Judge Select & Custom
+    // One judge works the whole session, so their pick survives a reload of this device.
     const judgeSelect = document.getElementById('judge-select');
-    const judgeCustom = document.getElementById('judge-custom');
-    if (judgeSelect && judgeCustom) {
+    if (judgeSelect) {
       judgeSelect.addEventListener('change', () => {
-        if (judgeSelect.value === '__custom__') {
-          judgeCustom.style.display = 'block';
-          judgeCustom.focus();
-        } else {
-          judgeCustom.style.display = 'none';
-          try {
-            localStorage.setItem(JUDGE_KEY, judgeSelect.value);
-          } catch (e) {}
-        }
-      });
-
-      judgeCustom.addEventListener('change', () => {
         try {
-          localStorage.setItem(JUDGE_KEY, judgeCustom.value.trim());
+          localStorage.setItem(JUDGE_KEY, judgeSelect.value);
         } catch (e) {}
-      });
-    }
-
-    // Team Select & Custom
-    const teamSelect = document.getElementById('team-select');
-    const teamCustom = document.getElementById('team-custom');
-    if (teamSelect && teamCustom) {
-      teamSelect.addEventListener('change', () => {
-        if (teamSelect.value === '__custom__') {
-          teamCustom.style.display = 'block';
-          teamCustom.focus();
-        } else {
-          teamCustom.style.display = 'none';
-        }
       });
     }
 
