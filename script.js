@@ -62,9 +62,9 @@ const SynapseScoresheet = (() => {
   let leanbotState = {};
   // Compressed data URL of the mission photo, sent along with the score
   let currentPhotoDataUrl = '';
-  // Try: one of the 0-3 buttons, or a free number once Other is picked.
+  // Try: the count the row means, kept in step with the box - typing 0-3 is the same
+  // answer as tapping that button, so it lights up either way.
   let tryValue = 0;
-  let tryIsOther = false;
   // Team options arrive with metadata, so keep the restored value until that list exists.
   let restoredTeam = '';
 
@@ -109,7 +109,7 @@ const SynapseScoresheet = (() => {
 
   function saveDraft() {
     const timeInput = document.getElementById('mission-time');
-    const otherInput = document.getElementById('try-other');
+    const tryInput = document.getElementById('try-input');
     const selectedTeam = getSelectedTeam();
 
     try {
@@ -119,8 +119,7 @@ const SynapseScoresheet = (() => {
         team: selectedTeam || restoredTeam,
         missionTime: timeInput ? timeInput.value : '',
         tryValue: tryValue,
-        tryIsOther: tryIsOther,
-        tryOther: otherInput ? otherInput.value : '',
+        tryTyped: tryInput ? tryInput.value : '',
         scores: Object.assign({}, scoreState),
         leanbots: Object.assign({}, leanbotState),
       }));
@@ -160,12 +159,16 @@ const SynapseScoresheet = (() => {
     tryValue = Number.isInteger(savedTryValue) && savedTryValue >= 0 && savedTryValue <= 3
       ? savedTryValue
       : 0;
-    tryIsOther = draft.tryIsOther === true;
 
-    const otherInput = document.getElementById('try-other');
-    if (otherInput) {
-      otherInput.value = String(draft.tryOther || '').replace(/\D/g, '').slice(0, 2);
+    // Drafts written before the box replaced the Other button kept the typed count in
+    // tryOther, and only meant it while tryIsOther was set - a leftover there belongs to
+    // a button the judge picked afterwards, so reading it blind would change the count.
+    const legacyTyped = draft.tryIsOther === true ? draft.tryOther : '';
+    const tryInput = document.getElementById('try-input');
+    if (tryInput) {
+      tryInput.value = String(draft.tryTyped || legacyTyped || '').replace(/\D/g, '').slice(0, 2);
     }
+    syncTryValueFromBox();
   }
 
   function clearDraft() {
@@ -450,26 +453,38 @@ const SynapseScoresheet = (() => {
     const group = document.getElementById('try-options');
     if (!group) return;
 
+    const lit = tryMatchesButton();
     group.querySelectorAll('.try-btn').forEach((btn) => {
-      const value = btn.getAttribute('data-try');
-      const active = tryIsOther ? value === 'other' : String(tryValue) === value;
+      const active = lit && btn.getAttribute('data-try') === String(tryValue);
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-pressed', String(active));
     });
+  }
 
-    const other = document.getElementById('try-other');
-    if (other) {
-      other.hidden = !tryIsOther;
-      if (!tryIsOther) other.removeAttribute('aria-invalid');
-    }
+  function getTypedTry() {
+    const input = document.getElementById('try-input');
+    return input ? input.value.trim() : '';
+  }
+
+  /** A typed count above 3 has no button to light; every other state has one. */
+  function tryMatchesButton() {
+    const typed = getTypedTry();
+    if (!typed) return true;
+
+    const n = Number(typed);
+    return Number.isInteger(n) && n >= 0 && n <= 3;
+  }
+
+  /** Typing 0-3 is the same answer as tapping that button, so the two never drift apart. */
+  function syncTryValueFromBox() {
+    const typed = getTypedTry();
+    if (typed !== '' && tryMatchesButton()) tryValue = Number(typed);
   }
 
   /** Read at submit time rather than tracked on every keystroke, so there is one truth. */
   function getTryCount() {
-    if (!tryIsOther) return tryValue;
-
-    const other = document.getElementById('try-other');
-    const raw = other ? other.value.trim() : '';
+    const raw = getTypedTry();
+    if (!raw) return tryValue;
     if (!/^\d{1,2}$/.test(raw)) return null;
 
     const typed = Number(raw);
@@ -478,12 +493,11 @@ const SynapseScoresheet = (() => {
 
   function resetTry() {
     tryValue = 0;
-    tryIsOther = false;
 
-    const other = document.getElementById('try-other');
-    if (other) {
-      other.value = '';
-      other.removeAttribute('aria-invalid');
+    const input = document.getElementById('try-input');
+    if (input) {
+      input.value = '';
+      input.removeAttribute('aria-invalid');
     }
     renderTryButtons();
   }
@@ -820,9 +834,9 @@ const SynapseScoresheet = (() => {
     const tryCount = getTryCount();
     if (tryCount === null) {
       reasons.push('Try must be a whole number from 0 to 99.');
-      const other = document.getElementById('try-other');
-      if (other) other.setAttribute('aria-invalid', 'true');
-      if (!focusTarget) focusTarget = other;
+      const input = document.getElementById('try-input');
+      if (input) input.setAttribute('aria-invalid', 'true');
+      if (!focusTarget) focusTarget = input;
     }
 
     return {
@@ -1018,36 +1032,36 @@ const SynapseScoresheet = (() => {
       });
     }
 
-    // Try buttons. Other reveals a number field and focuses it, which is what raises the
-    // numeric keypad on a phone - the buttons alone never open one.
+    // Try buttons. Tapping one is also the way out of a half-typed box, so it clears
+    // the field - otherwise the two would disagree about the count.
     const tryOptions = document.getElementById('try-options');
     if (tryOptions) {
       tryOptions.addEventListener('click', (e) => {
         const btn = e.target.closest('.try-btn');
         if (!btn) return;
 
-        const other = document.getElementById('try-other');
-        const hadTryError = other && other.getAttribute('aria-invalid') === 'true';
-        const value = btn.getAttribute('data-try');
-        tryIsOther = value === 'other';
-        if (!tryIsOther) tryValue = Number(value);
-        renderTryButtons();
-        if (hadTryError && !tryIsOther) setSubmitStatus('', null);
-
-        if (tryIsOther && other) {
-          other.focus();
-          other.select();
+        const input = document.getElementById('try-input');
+        const hadTryError = input && input.getAttribute('aria-invalid') === 'true';
+        tryValue = Number(btn.getAttribute('data-try'));
+        if (input) {
+          input.value = '';
+          input.removeAttribute('aria-invalid');
         }
+        renderTryButtons();
+        if (hadTryError) setSubmitStatus('', null);
         saveDraft();
       });
     }
 
-    const tryOther = document.getElementById('try-other');
-    if (tryOther) {
-      tryOther.addEventListener('input', () => {
-        const hadTryError = tryOther.getAttribute('aria-invalid') === 'true';
-        tryOther.value = tryOther.value.replace(/\D/g, '').slice(0, 2);
-        tryOther.removeAttribute('aria-invalid');
+    const tryInput = document.getElementById('try-input');
+    if (tryInput) {
+      tryInput.addEventListener('input', () => {
+        const hadTryError = tryInput.getAttribute('aria-invalid') === 'true';
+        tryInput.value = tryInput.value.replace(/\D/g, '').slice(0, 2);
+        tryInput.removeAttribute('aria-invalid');
+        // Follow a typed 0-3 with the buttons, so clearing the box lands on that same count.
+        syncTryValueFromBox();
+        renderTryButtons();
         if (hadTryError) setSubmitStatus('', null);
         saveDraft();
       });

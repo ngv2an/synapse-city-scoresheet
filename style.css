@@ -131,12 +131,19 @@ body {
   display: none;
 }
 
-/* Try: the four common answers as buttons, plus a way out */
+/* Try: a number box, then the four common answers as one-tap shortcuts */
 .try-control {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
+}
+
+.try-input {
+  flex: 0 0 46px;
+  width: 46px;
+  min-width: 0;
+  text-align: center;
 }
 
 .try-options {
@@ -163,13 +170,6 @@ body {
   transition: all 0.15s ease;
 }
 
-/* A word, not a digit, so an even share of the row is not enough. */
-.try-btn-other {
-  flex: 1.7;
-  font-size: 12px;
-  letter-spacing: 0.02em;
-}
-
 .try-btn:active {
   transform: scale(0.95);
 }
@@ -178,13 +178,6 @@ body {
   border-color: #007bff;
   background: #007bff;
   color: #ffffff;
-}
-
-.try-other {
-  flex: 0 0 48px;
-  width: 48px;
-  min-width: 0;
-  text-align: center;
 }
 
 .entry-row input,
@@ -642,5 +635,14 @@ body {
 
   .entry-label {
     font-size: 10px;
+  }
+
+  .try-control {
+    gap: 6px;
+  }
+
+  .try-input {
+    flex: 0 0 40px;
+    width: 40px;
   }
 }
