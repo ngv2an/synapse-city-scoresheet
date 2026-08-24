@@ -5,6 +5,8 @@
  * A string body is tagged text/plain, which makes this a simple request and skips the
  * preflight. Apps Script only exposes doGet/doPost and cannot answer OPTIONS.
  *
+ * ENDPOINT is the single central deployment used by every spreadsheet copy. Each request
+ * includes a sheetId, so copied spreadsheets never need their own Apps Script deployment.
  * Fill in ENDPOINT and SHARED_KEY to match apps-script/Code.gs.
  */
 const SheetSubmit = (() => {
@@ -175,7 +177,7 @@ const SheetSubmit = (() => {
     return sent;
   }
 
-  /** Fetches the Config tab of the target Sheet: competition name, date, round times, level, judges, teams */
+  /** Fetches Config from the target copy through the shared central Apps Script deployment. */
   async function fetchMetadata(sheetId) {
     if (!isConfigured()) return { ok: false, error: 'Endpoint not configured' };
     const query = sheetId ? `?sheetId=${encodeURIComponent(sheetId)}` : '';

@@ -79,7 +79,7 @@ const SynapseScoresheet = (() => {
 
   function getActiveSheetId() {
     const urlParams = new URLSearchParams(window.location.search);
-    const link = urlParams.get('link') || urlParams.get('sheet') || urlParams.get('id');
+    const link = urlParams.get('sheetId') || urlParams.get('sheet') || urlParams.get('link') || urlParams.get('id');
     if (!link) return DEFAULT_SHEET_ID;
     const match = link.match(/\/d\/([a-zA-Z0-9-_]+)/);
     if (match) return match[1];

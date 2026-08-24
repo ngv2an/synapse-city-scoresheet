@@ -1,16 +1,22 @@
 /**
  * Synapse City Scoresheet — endpoint that provides metadata and writes scoring runs into Google Sheets.
  *
- * Setup:
- *   1. Open the target Google Sheet › Extensions › Apps Script, paste this into Code.gs
+ * Central setup — do this once, not once per spreadsheet:
+ *   1. Create one standalone project at script.google.com and paste this into Code.gs
  *   2. Fill in DEFAULT_SHEET_ID and SHARED_KEY
  *   3. Deploy › New deployment › Web app
  *        Execute as     : Me
  *        Who has access : Anyone
  *   4. Copy the /exec URL into ENDPOINT in submit.js; SHARED_KEY must match
  *
- * Every edit to this file needs a fresh deployment, otherwise /exec keeps running the
- * old code: Deploy › Manage deployments › Edit › Version: New version
+ * Every spreadsheet copy uses this same deployment. The website sends that copy's
+ * spreadsheet ID with each request, and this project opens it with openById(). Do not
+ * paste or deploy this project again inside a copied spreadsheet. The account that
+ * deploys this web app must have edit access to every target spreadsheet.
+ *
+ * After editing this file, update this one deployment only:
+ * Deploy › Manage deployments › Edit › Version: New version. All existing spreadsheet
+ * copies then use the new backend code automatically on their next request.
  */
 
 const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
