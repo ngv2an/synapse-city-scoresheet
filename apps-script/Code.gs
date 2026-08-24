@@ -40,6 +40,9 @@ const HEADERS_SCORES = [
  *
  * Nothing is pinned to a fixed cell: the labels are searched for, so extra rows or a
  * shifted block keep working as long as label and value stay side by side.
+ *
+ * Rounds are open-ended. Any "Round <n> Time" row is picked up and sorted by n, so a
+ * third round is a row in the sheet, not an edit here.
  */
 const CONFIG_TEMPLATE = [
   ['Judge', 'Team', '', 'Competition Name', 'Synapse City 123'],
@@ -54,10 +57,11 @@ const CONFIG_TEMPLATE = [
 const CONFIG_LABELS = {
   'competition name': 'competition',
   'competition date': 'competitionDate',
-  'round 1 time': 'round1Time',
-  'round 2 time': 'round2Time',
   'level': 'level'
 };
+
+// Matches 'Round 1 Time' .. 'Round 99 Time'; the number decides the order they go out in.
+const CONFIG_ROUND_LABEL = /^round\s*(\d+)\s*time$/;
 
 const CONFIG_JUDGE_HEADERS = ['judge', 'judges', 'judge name'];
 const CONFIG_TEAM_HEADERS = ['team', 'teams', 'team id', 'team name'];
@@ -95,22 +99,37 @@ function readConfig_(ss) {
   const config = {
     competition: 'Synapse City',
     competitionDate: '',
-    round1Time: '',
-    round2Time: '',
+    rounds: [],
     level: '',
     judges: readConfigColumn_(data, CONFIG_JUDGE_HEADERS),
     teams: readConfigColumn_(data, CONFIG_TEAM_HEADERS)
   };
 
+  const roundTimes = {};
+
   for (let r = 0; r < data.length; r++) {
     for (let c = 0; c < data[r].length - 1; c++) {
-      const field = CONFIG_LABELS[normalizeLabel_(data[r][c])];
+      const label = normalizeLabel_(data[r][c]);
+
+      const round = CONFIG_ROUND_LABEL.exec(label);
+      if (round) {
+        const time = formatConfigValue_(data[r][c + 1], 'roundTime', tz);
+        if (time) roundTimes[Number(round[1])] = time;
+        continue;
+      }
+
+      const field = CONFIG_LABELS[label];
       if (!field) continue;
 
       const value = formatConfigValue_(data[r][c + 1], field, tz);
       if (value) config[field] = value;
     }
   }
+
+  config.rounds = Object.keys(roundTimes)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .map((n) => ({ round: n, time: roundTimes[n] }));
 
   config.level = config.level.toLowerCase();
   return config;

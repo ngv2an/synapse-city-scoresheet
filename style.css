@@ -63,9 +63,10 @@ body {
   color: #475569;
   letter-spacing: 0.02em;
   margin-top: -2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 0 8px;
+  /* Wraps rather than truncates: the round count comes from the Config tab and three or
+     four of them will not fit one phone line. */
+  line-height: 1.35;
 }
 
 /* Top 4 Level Buttons (Low Profile) */

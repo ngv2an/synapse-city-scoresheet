@@ -440,8 +440,11 @@ const SynapseScoresheet = (() => {
 
     const parts = [];
     if (data.competitionDate) parts.push(data.competitionDate);
-    if (data.round1Time) parts.push('Round 1: ' + data.round1Time);
-    if (data.round2Time) parts.push('Round 2: ' + data.round2Time);
+
+    // The Config tab decides how many rounds there are, so this just walks what came back.
+    (Array.isArray(data.rounds) ? data.rounds : []).forEach((r) => {
+      if (r && r.time) parts.push('Round ' + r.round + ': ' + r.time);
+    });
 
     el.textContent = parts.join(' • ');
     el.style.display = parts.length ? 'block' : 'none';
