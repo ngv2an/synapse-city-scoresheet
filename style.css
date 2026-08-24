@@ -76,7 +76,7 @@ body {
 }
 
 .meta-round::before {
-  content: '2';
+  content: '\2022 ';
   margin-right: 7px;
   color: #94a3b8;
 }
