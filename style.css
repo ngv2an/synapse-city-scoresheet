@@ -22,7 +22,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(100%, 650px);
+  width: min(100%, 490px);
   margin: 0 auto;
 }
 
@@ -171,36 +171,25 @@ body {
 
 .entry-grid {
   display: grid;
-  grid-template-columns: 1.3fr 1.3fr 1fr 1.6fr;
+  /* Keep the same compact two-row arrangement on desktop and mobile. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
 }
 
-@media (max-width: 520px) {
-  /* Six tracks rather than two, so the row can be split unevenly: Time needs very little
-     and Try needs room for five buttons. Two equal columns would squeeze Try to ~34px a
-     button, below anything a finger can hit reliably. */
-  .entry-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-
-  .entry-field {
-    grid-column: span 3;
-  }
-
-  .entry-field-time {
-    grid-column: span 2;
-  }
-
-  .entry-field-try {
-    grid-column: span 4;
-  }
-}
-
 .entry-field {
+  grid-column: span 3;
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+}
+
+.entry-field-time {
+  grid-column: span 2;
+}
+
+.entry-field-try {
+  grid-column: span 4;
 }
 
 .entry-label {
