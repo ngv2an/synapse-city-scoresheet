@@ -512,7 +512,10 @@ const SynapseScoresheet = (() => {
   function resetRunState() {
     // Reset Time and Try
     const timeInput = document.getElementById('mission-time');
-    if (timeInput) timeInput.value = '';
+    if (timeInput) {
+      timeInput.value = '';
+      timeInput.removeAttribute('aria-invalid');
+    }
     resetTry();
 
     initScoreState();
@@ -587,35 +590,43 @@ const SynapseScoresheet = (() => {
     return hours * 3600 + minutes * 60 + seconds;
   }
 
+  function getConfiguredSchedule() {
+    const rounds = (competitionInfo.rounds || [])
+      .map((r) => ({ round: Number(r.round), time: r.time, seconds: parseConfigTime(r.time) }))
+      .filter((r) => (r.round === 1 || r.round === 2) && r.seconds !== null)
+      .sort((a, b) => a.round - b.round);
+    const round1 = rounds.find((r) => r.round === 1);
+    const round2 = rounds.find((r) => r.round === 2);
+    const endSeconds = parseConfigTime(competitionInfo.endTime);
+    const valid = !!round1 && !!round2 && endSeconds !== null
+      && round1.seconds < round2.seconds && round2.seconds < endSeconds;
+
+    return { rounds: rounds, round1: round1, round2: round2, endSeconds: endSeconds, valid: valid };
+  }
+
   /**
    * The clock picks one of the two fixed rounds, and End Time closes the schedule. Start
    * times are placed on the competition date, so opening the page the day before still
    * reads "Start at ..." rather than jumping to the last round.
    */
   function resolveRound(now) {
-    const rounds = (competitionInfo.rounds || [])
-      .map((r) => ({ round: Number(r.round), time: r.time, seconds: parseConfigTime(r.time) }))
-      .filter((r) => (r.round === 1 || r.round === 2) && r.seconds !== null)
-      .sort((a, b) => a.round - b.round);
-
-    if (!rounds.length) return null;
+    const schedule = getConfiguredSchedule();
+    if (!schedule.valid) return null;
 
     const date = parseConfigDate(competitionInfo.competitionDate);
     const midnight = date
       ? new Date(date[0], date[1], date[2])
       : new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const endSeconds = parseConfigTime(competitionInfo.endTime);
-    const ended = endSeconds !== null
-      && now.getTime() >= midnight.getTime() + endSeconds * 1000;
-    if (ended) return { current: null, first: rounds[0], ended: true };
+    const ended = now.getTime() >= midnight.getTime() + schedule.endSeconds * 1000;
+    if (ended) return { current: null, first: schedule.round1, ended: true };
 
     let current = null;
-    rounds.forEach((r) => {
+    schedule.rounds.forEach((r) => {
       if (now.getTime() >= midnight.getTime() + r.seconds * 1000) current = r;
     });
 
-    return { current: current, first: rounds[0], ended: false };
+    return { current: current, first: schedule.round1, ended: false };
   }
 
   function renderRound() {
@@ -643,10 +654,16 @@ const SynapseScoresheet = (() => {
     return pad(date.getDate()) + '/' + pad(date.getMonth() + 1) + '/' + pad(date.getFullYear() % 100);
   }
 
+  function isCompetitionDate(now, expected) {
+    return now.getFullYear() === expected[0]
+      && now.getMonth() === expected[1]
+      && now.getDate() === expected[2];
+  }
+
   /**
    * The round is read off the device clock, so a tablet left on the wrong date reports a
-   * wrong round and says nothing about it. This makes that impossible to miss. It warns
-   * rather than blocks: a judge mid-run needs the sheet more than they need a correct clock.
+   * wrong round and says nothing about it. This makes that impossible to miss; Submit also
+   * uses the same date check and blocks the run until the device clock is corrected.
    */
   function renderDateWarning() {
     const el = document.getElementById('date-warning');
@@ -659,19 +676,11 @@ const SynapseScoresheet = (() => {
     }
 
     const now = new Date();
-    const sameDay = now.getFullYear() === expected[0]
-      && now.getMonth() === expected[1]
-      && now.getDate() === expected[2];
+    const sameDay = isCompetitionDate(now, expected);
 
     el.textContent = sameDay ? '' : 'Wrong device date: ' + formatDeviceDate(now)
       + ' - competition is ' + competitionInfo.competitionDate
       + '. Check the device clock, the round above is unreliable.';
-  }
-
-  /** Round number for the row, blank before Round 1 and after End Time. */
-  function getCurrentRound() {
-    const state = resolveRound(new Date());
-    return state && state.current ? state.current.round : '';
   }
 
   function renderClock() {
@@ -761,43 +770,89 @@ const SynapseScoresheet = (() => {
     }
   }
 
-  async function handleSubmit() {
-    const btn = document.getElementById('btn-submit');
-    const team = getSelectedTeam();
-    const judge = getSelectedJudge();
-    if (!btn) return;
+  function validateSubmission(now) {
+    const reasons = [];
+    let focusTarget = null;
+    let round = '';
 
-    // Judge is checked first: it is picked once at the start of a session, so an empty one
-    // means the judge never set up this device and every run after it would be unattributed.
-    if (!judge) {
-      setSubmitStatus('Select a Judge before submitting.', 'error');
-      const judgeSelect = document.getElementById('judge-select');
-      if (judgeSelect) judgeSelect.focus();
-      return;
+    const expectedDate = parseConfigDate(competitionInfo.competitionDate);
+    const schedule = getConfiguredSchedule();
+    if (!expectedDate || !schedule.valid) {
+      reasons.push('Competition date or schedule is missing or invalid.');
+    } else if (!isCompetitionDate(now, expectedDate)) {
+      reasons.push('Device date ' + formatDeviceDate(now)
+        + ' does not match competition date ' + competitionInfo.competitionDate + '.');
+    } else {
+      const state = resolveRound(now);
+      if (state.ended) {
+        reasons.push('End Time ' + competitionInfo.endTime + ' has passed.');
+      } else if (!state.current) {
+        reasons.push('Round 1 has not started. Start time is ' + schedule.round1.time + '.');
+      } else {
+        round = state.current.round;
+      }
     }
 
+    const judge = getSelectedJudge();
+    if (!judge) {
+      reasons.push('Judge is required.');
+      focusTarget = document.getElementById('judge-select');
+    }
+
+    const team = getSelectedTeam();
     if (!team) {
-      setSubmitStatus('Select a Team ID before submitting.', 'error');
-      const teamSelect = document.getElementById('team-select');
-      if (teamSelect) teamSelect.focus();
-      return;
+      reasons.push('Team is required.');
+      if (!focusTarget) focusTarget = document.getElementById('team-select');
+    }
+
+    const timeInput = document.getElementById('mission-time');
+    const missionTime = timeInput ? timeInput.value.trim() : '';
+    if (!missionTime) {
+      reasons.push('Time is required.');
+      if (timeInput) timeInput.setAttribute('aria-invalid', 'true');
+      if (!focusTarget) focusTarget = timeInput;
     }
 
     const tryCount = getTryCount();
     if (tryCount === null) {
-      setSubmitStatus('Enter a whole Try count from 0 to 99.', 'error');
+      reasons.push('Try must be a whole number from 0 to 99.');
       const other = document.getElementById('try-other');
-      if (other) {
-        other.setAttribute('aria-invalid', 'true');
-        other.focus();
-      }
+      if (other) other.setAttribute('aria-invalid', 'true');
+      if (!focusTarget) focusTarget = other;
+    }
+
+    return {
+      reasons: reasons,
+      focusTarget: focusTarget,
+      judge: judge,
+      team: team,
+      missionTime: missionTime,
+      tryCount: tryCount,
+      round: round,
+    };
+  }
+
+  function showSubmitBlocked(validation) {
+    const message = 'Cannot submit:\n\n'
+      + validation.reasons.map((reason) => '• ' + reason).join('\n');
+    window.alert(message);
+    setSubmitStatus(validation.reasons[0], 'error');
+    if (validation.focusTarget) validation.focusTarget.focus();
+  }
+
+  async function handleSubmit() {
+    const btn = document.getElementById('btn-submit');
+    if (!btn) return;
+
+    const validation = validateSubmission(new Date());
+    if (validation.reasons.length > 0) {
+      showSubmitBlocked(validation);
       return;
     }
 
     const totalScore = getTotalScore();
     if (totalScore === 0 && !window.confirm('Total score is 0. Submit anyway?')) return;
 
-    const missionTime = document.getElementById('mission-time') ? document.getElementById('mission-time').value.trim() : '';
     const deviceId = getOrCreateDeviceId();
     const sheetId = getActiveSheetId();
 
@@ -811,12 +866,12 @@ const SynapseScoresheet = (() => {
       const result = await SheetSubmit.submit({
         sheetId: sheetId,
         deviceId: deviceId,
-        judge: judge,
-        team: team,
-        round: getCurrentRound(),
+        judge: validation.judge,
+        team: validation.team,
+        round: validation.round,
         totalScore: totalScore,
-        missionTime: missionTime,
-        tryCount: tryCount,
+        missionTime: validation.missionTime,
+        tryCount: validation.tryCount,
         scores: Object.assign({}, scoreState, leanbotState),
         photoBase64: currentPhotoDataUrl,
       });
@@ -825,7 +880,7 @@ const SynapseScoresheet = (() => {
         setSubmitStatus('This run was already recorded.', 'ok');
       } else {
         const where = result.row ? ' - row ' + result.row : '';
-        setSubmitStatus('Submitted "' + team + '"' + where + '. Cleared for next run.', 'ok');
+        setSubmitStatus('Submitted "' + validation.team + '"' + where + '. Cleared for next run.', 'ok');
       }
       clearForNextTeam();
 
@@ -999,6 +1054,7 @@ const SynapseScoresheet = (() => {
     if (timeInput) {
       timeInput.addEventListener('input', () => {
         timeInput.value = formatMissionTime(timeInput.value);
+        timeInput.removeAttribute('aria-invalid');
         saveDraft();
       });
     }
