@@ -75,35 +75,32 @@ body {
   display: none;
 }
 
-.meta-round::before {
+.meta-round::before,
+.meta-level::before {
   content: '\2022 ';
   margin-right: 7px;
   color: #94a3b8;
 }
 
-/* No date to separate from, so no separator. */
-.meta-date:empty + .meta-round::before {
+/* Nothing sits in front of it, so there is nothing to separate from. */
+.meta-date:empty + .meta-round::before,
+.meta-date:empty + .meta-round:empty + .meta-level::before {
   content: none;
 }
 
-.meta-round {
+.meta-round,
+.meta-level {
   color: #1e40af;
+}
+
+/* The Config tab hands the level over lowercase; it has to read as a word next to "Round 2". */
+.meta-level {
+  text-transform: capitalize;
 }
 
 /* Waiting for the first round reads differently from being in one. */
 .meta-round.is-pending {
   color: #b45309;
-}
-
-.meta-level {
-  padding: 1px 8px;
-  border: 1px solid #bfdbfe;
-  border-radius: 999px;
-  background: #dbeafe;
-  color: #1e40af;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 /* Metadata & Run Entry Bar */
