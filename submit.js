@@ -175,7 +175,7 @@ const SheetSubmit = (() => {
     return sent;
   }
 
-  /** Fetches Competition Name, Judges, and Teams from Config tab of the target Sheet */
+  /** Fetches the Config tab of the target Sheet: competition name, date, round times, level, judges, teams */
   async function fetchMetadata(sheetId) {
     if (!isConfigured()) return { ok: false, error: 'Endpoint not configured' };
     const query = sheetId ? `?sheetId=${encodeURIComponent(sheetId)}` : '';

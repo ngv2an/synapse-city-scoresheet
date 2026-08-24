@@ -55,6 +55,19 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Competition Date & Round Times */
+.competition-meta {
+  text-align: center;
+  font-size: clamp(10px, 2.6vw, 12px);
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 0.02em;
+  margin-top: -2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Top 4 Level Buttons (Low Profile) */
 .level-tabs {
   display: grid;

@@ -51,6 +51,9 @@ const SynapseScoresheet = (() => {
   const JUDGE_KEY = 'scoresheet.judgeName';
 
   let activeLevel = 'creator';
+  // Once a judge picks a level by hand the Config tab stops overriding it, otherwise a
+  // slow metadata fetch would snap the tab back mid-run.
+  let levelPinnedByUser = false;
   // scoreState maps blockId to selected option: 'containment' | 'neutralization' | 'analysis' | null
   let scoreState = {};
   // leanbotState maps botId to boolean (checked for CRL)
@@ -431,11 +434,44 @@ const SynapseScoresheet = (() => {
     }
   }
 
+  function applyCompetitionMeta(data) {
+    const el = document.getElementById('competition-meta');
+    if (!el) return;
+
+    const parts = [];
+    if (data.competitionDate) parts.push(data.competitionDate);
+    if (data.round1Time) parts.push('Round 1: ' + data.round1Time);
+    if (data.round2Time) parts.push('Round 2: ' + data.round2Time);
+
+    el.textContent = parts.join(' • ');
+    el.style.display = parts.length ? 'block' : 'none';
+  }
+
+  function applyConfiguredLevel(level) {
+    const key = String(level || '').toLowerCase();
+    if (!LEVELS[key] || key === activeLevel) return;
+    if (levelPinnedByUser || getTotalScore() > 0) return;
+
+    activeLevel = key;
+    const tabs = document.getElementById('level-tabs');
+    if (tabs) {
+      tabs.querySelectorAll('.level-tab').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-level') === key);
+      });
+    }
+
+    initScoreState();
+    renderTable();
+  }
+
   function applyMetadata(data) {
     if (data.competition) {
       const banner = document.getElementById('competition-banner');
       if (banner) banner.textContent = data.competition;
     }
+
+    applyCompetitionMeta(data);
+    applyConfiguredLevel(data.level);
 
     // Populate Judges
     const judgeSelect = document.getElementById('judge-select');
@@ -571,6 +607,7 @@ const SynapseScoresheet = (() => {
         }
 
         activeLevel = level;
+        levelPinnedByUser = true;
         levelTabs.querySelectorAll('.level-tab').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
 

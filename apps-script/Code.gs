@@ -27,61 +27,149 @@ const HEADERS_SCORES = [
 ];
 
 /**
- * GET Handler: Returns Competition Name, Judges, and Teams from Config tab
+ * Config tab layout. A label sits in one cell and its value in the cell to its right,
+ * while Judge and Team are column headers with their entries listed underneath:
+ *
+ *        A          B                  C   D                   E
+ *   1  Judge      Team                     Competition Name    Synapse City 123
+ *   2                                      Competition Date    24/08/26
+ *   3  Thầy An    Team 01 - Alpha        Round 1 Time        10:00 AM
+ *   4  Cô Linh    Team 02 - Beta         Round 2 Time        11:00 AM
+ *   5
+ *   6                                      Level               Creator
+ *
+ * Nothing is pinned to a fixed cell: the labels are searched for, so extra rows or a
+ * shifted block keep working as long as label and value stay side by side.
+ */
+const CONFIG_TEMPLATE = [
+  ['Judge', 'Team', '', 'Competition Name', 'Synapse City 123'],
+  ['', '', '', 'Competition Date', '24/08/26'],
+  ['Thầy An', 'Team 01 - Alpha', '', 'Round 1 Time', '10:00 AM'],
+  ['Cô Linh', 'Team 02 - Beta', '', 'Round 2 Time', '11:00 AM'],
+  ['', '', '', '', ''],
+  ['', '', '', 'Level', 'Creator']
+];
+
+// Label in the Config tab -> field name in the JSON reply.
+const CONFIG_LABELS = {
+  'competition name': 'competition',
+  'competition date': 'competitionDate',
+  'round 1 time': 'round1Time',
+  'round 2 time': 'round2Time',
+  'level': 'level'
+};
+
+const CONFIG_JUDGE_HEADERS = ['judge', 'judges', 'judge name'];
+const CONFIG_TEAM_HEADERS = ['team', 'teams', 'team id', 'team name'];
+
+/**
+ * GET Handler: Returns everything the scoresheet needs from the Config tab —
+ * competition name, date, round times, level, and the Judge / Team lists.
  */
 function doGet(e) {
   try {
     const sheetId = resolveSheetId_(e && e.parameter ? (e.parameter.sheetId || e.parameter.link) : '');
     const ss = SpreadsheetApp.openById(sheetId);
-    let configSheet = ss.getSheetByName(SHEET_NAME_CONFIG);
+    const config = readConfig_(ss);
 
-    if (!configSheet) {
-      // Auto-create sample Config tab if it does not exist yet
-      configSheet = ss.insertSheet(SHEET_NAME_CONFIG);
-      configSheet.getRange('A1:B1').setValues([['Competition Name', 'Synapse City Championship 2026']]);
-      configSheet.getRange('A2:B2').setValues([['Judge', 'Team ID']]);
-      configSheet.getRange('A3:B5').setValues([
-        ['Judge 1', 'Team 01'],
-        ['Judge 2', 'Team 02'],
-        ['Judge 3', 'Team 03']
-      ]);
-      configSheet.getRange('A1:B2').setFontWeight('bold');
-    }
-
-    const data = configSheet.getDataRange().getValues();
-    let competitionName = 'Synapse City';
-    const judges = [];
-    const teams = [];
-
-    if (data.length > 0) {
-      // Cell B1 contains Competition Name
-      if (data[0][1]) {
-        competitionName = String(data[0][1]).trim();
-      } else if (data[0][0] && data[0][0] !== 'Judge' && data[0][0] !== 'Competition Name') {
-        competitionName = String(data[0][0]).trim();
-      }
-
-      // Read judges and teams starting from row 3 (or row 2 if no header on row 2)
-      const startRow = (data.length > 1 && String(data[1][0]).toLowerCase().includes('judge')) ? 2 : 1;
-      for (let i = startRow; i < data.length; i++) {
-        const j = String(data[i][0] || '').trim();
-        const t = String(data[i][1] || '').trim();
-        if (j && j !== 'Judge') judges.push(j);
-        if (t && t !== 'Team' && t !== 'Team ID') teams.push(t);
-      }
-    }
-
-    return json({
-      ok: true,
-      sheetId: sheetId,
-      competition: competitionName,
-      judges: Array.from(new Set(judges)),
-      teams: Array.from(new Set(teams))
-    });
+    return json(Object.assign({ ok: true, sheetId: sheetId }, config));
 
   } catch (err) {
     return json({ ok: false, error: String(err) });
   }
+}
+
+/** Rewrites the Config tab into the layout above. Run by hand from the editor. */
+function resetConfigSheet() {
+  const ss = SpreadsheetApp.openById(DEFAULT_SHEET_ID);
+  const existing = ss.getSheetByName(SHEET_NAME_CONFIG);
+  if (existing) ss.deleteSheet(existing);
+  createConfigSheet_(ss);
+}
+
+function readConfig_(ss) {
+  const sheet = ss.getSheetByName(SHEET_NAME_CONFIG) || createConfigSheet_(ss);
+  const data = sheet.getDataRange().getValues();
+  const tz = ss.getSpreadsheetTimeZone();
+
+  const config = {
+    competition: 'Synapse City',
+    competitionDate: '',
+    round1Time: '',
+    round2Time: '',
+    level: '',
+    judges: readConfigColumn_(data, CONFIG_JUDGE_HEADERS),
+    teams: readConfigColumn_(data, CONFIG_TEAM_HEADERS)
+  };
+
+  for (let r = 0; r < data.length; r++) {
+    for (let c = 0; c < data[r].length - 1; c++) {
+      const field = CONFIG_LABELS[normalizeLabel_(data[r][c])];
+      if (!field) continue;
+
+      const value = formatConfigValue_(data[r][c + 1], field, tz);
+      if (value) config[field] = value;
+    }
+  }
+
+  config.level = config.level.toLowerCase();
+  return config;
+}
+
+/** Collects every non-empty cell under the first header cell matching one of `headers`. */
+function readConfigColumn_(data, headers) {
+  for (let r = 0; r < data.length; r++) {
+    for (let c = 0; c < data[r].length; c++) {
+      if (headers.indexOf(normalizeLabel_(data[r][c])) === -1) continue;
+
+      const values = [];
+      for (let i = r + 1; i < data.length; i++) {
+        const value = String(data[i][c] === null || data[i][c] === undefined ? '' : data[i][c]).trim();
+        if (value) values.push(value);
+      }
+      return Array.from(new Set(values));
+    }
+  }
+  return [];
+}
+
+function normalizeLabel_(cell) {
+  return String(cell === null || cell === undefined ? '' : cell)
+    .trim().toLowerCase().replace(/[:\s]+$/, '').replace(/\s+/g, ' ');
+}
+
+/**
+ * A cell typed as a date or a time comes back as a Date, so String() on it would leak
+ * "Mon Aug 24 2026 00:00:00 GMT+0700". Only the shape that was typed goes out.
+ */
+function formatConfigValue_(cell, field, tz) {
+  if (cell === null || cell === undefined || cell === '') return '';
+
+  if (Object.prototype.toString.call(cell) === '[object Date]') {
+    return Utilities.formatDate(cell, tz, field === 'competitionDate' ? 'dd/MM/yy' : 'h:mm a');
+  }
+  return String(cell).trim();
+}
+
+function createConfigSheet_(ss) {
+  const sheet = ss.insertSheet(SHEET_NAME_CONFIG);
+  const rows = CONFIG_TEMPLATE.length;
+  const cols = CONFIG_TEMPLATE[0].length;
+
+  // Plain text on the value column, set before writing: otherwise Sheets turns 24/08/26
+  // and 10:00 AM into date values and reformats them to whatever the locale prefers.
+  sheet.getRange(1, 5, rows, 1).setNumberFormat('@');
+  sheet.getRange(1, 1, rows, cols).setValues(CONFIG_TEMPLATE);
+
+  sheet.getRange('A1:B1').setFontWeight('bold');
+  sheet.getRange(1, 4, rows, 1).setFontWeight('bold');
+  sheet.setColumnWidth(1, 140);
+  sheet.setColumnWidth(2, 170);
+  sheet.setColumnWidth(3, 24);
+  sheet.setColumnWidth(4, 150);
+  sheet.setColumnWidth(5, 190);
+
+  return sheet;
 }
 
 /**
