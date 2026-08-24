@@ -353,6 +353,25 @@ const SynapseScoresheet = (() => {
     });
   }
 
+  /**
+   * Digits fill in from the right the way a stopwatch reads out, so 12345 becomes 1:23.45
+   * and nobody types a colon. Every half-typed state is a real time as well - 123 reads as
+   * 1.23 seconds, not a mask with holes in it - so the field never shows nonsense mid-entry.
+   */
+  function formatMissionTime(raw) {
+    // The zeros this mask pads with come straight back in on the next keystroke, so they
+    // have to go first - without this, typing 1 2 3 walks 0.01 -> 00.12 -> 0:01.23.
+    const digits = String(raw).replace(/[^0-9]/g, '').replace(/^0+/, '').slice(-6);
+    if (!digits) return '';
+
+    const padded = digits.padStart(3, '0');
+    const centis = padded.slice(-2);
+    const seconds = padded.slice(0, -2);
+
+    if (seconds.length <= 2) return seconds + '.' + centis;
+    return seconds.slice(0, -2) + ':' + seconds.slice(-2) + '.' + centis;
+  }
+
   function pendingCount() {
     return typeof SheetSubmit === 'undefined' ? 0 : SheetSubmit.pending();
   }
@@ -787,12 +806,11 @@ const SynapseScoresheet = (() => {
       });
     }
 
-    // Mission Time input auto-sanitizer
+    // Mission Time: digits only, the mask puts the separators in.
     const timeInput = document.getElementById('mission-time');
     if (timeInput) {
       timeInput.addEventListener('input', () => {
-        // Allows digits, colon, dot
-        timeInput.value = timeInput.value.replace(/[^0-9:.]/g, '');
+        timeInput.value = formatMissionTime(timeInput.value);
       });
     }
 
