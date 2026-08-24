@@ -12,68 +12,65 @@
 
 <body>
   <main class="scoresheet-app">
-    <!-- Sticky Top Header (Competition info + Score & Action Bar) -->
-    <header class="sticky-header">
-      <!-- Competition Name Banner -->
-      <div class="competition-banner" id="competition-banner">Synapse City</div>
+    <!-- Competition and run information, one item per row -->
+    <section class="entry-panel">
+      <div class="entry-row entry-row-static">
+        <span class="entry-label">Competition Name</span>
+        <span class="entry-static-value competition-banner" id="competition-banner">Synapse City</span>
+      </div>
 
-      <!-- Date, current Round, and Level - all read from the Config tab, none selectable -->
-      <div class="competition-meta" id="competition-meta">
-        <span class="meta-date" id="meta-date"></span>
-        <span class="meta-round" id="meta-round"></span>
-        <span class="meta-level" id="meta-level"></span>
+      <div class="entry-row entry-row-static">
+        <span class="entry-label">Competition Date</span>
+        <span class="entry-static-value meta-date" id="meta-date"></span>
       </div>
 
       <!-- Shown only when the device clock disagrees with the Config tab -->
       <div class="date-warning" id="date-warning" role="alert"></div>
 
-      <!-- Score & Action Bar -->
-      <div class="score-action-bar">
-        <div class="total-score-badge">
-          <span class="total-label">Total Score</span>
-          <span class="total-score" id="total-score">0</span>
-        </div>
-        <button class="btn-action btn-photo" id="btn-photo" title="Photo">Photo</button>
-      </div>
-    </header>
-
-    <!-- Run Metadata Entry Bar (Judge, Team, Time, Try) -->
-    <section class="entry-bar">
-      <div class="entry-grid">
-        <label class="entry-field">
+      <label class="entry-row">
           <span class="entry-label">Judge</span>
           <select id="judge-select" class="entry-select">
             <option value="">-- Select Judge --</option>
           </select>
-        </label>
+      </label>
 
-        <label class="entry-field">
-          <span class="entry-label">Team ID</span>
+      <!-- Level and Round are both read from Config / device time and are not selectable. -->
+      <div class="entry-row entry-row-static">
+        <span class="entry-label">Level</span>
+        <div class="entry-static-value competition-meta" id="competition-meta">
+          <span class="meta-level" id="meta-level"></span>
+          <span class="meta-round" id="meta-round"></span>
+        </div>
+      </div>
+
+      <label class="entry-row">
+          <span class="entry-label">Team</span>
           <select id="team-select" class="entry-select">
             <option value="">-- Select Team --</option>
           </select>
-        </label>
+      </label>
 
-        <label class="entry-field entry-field-time">
-          <span class="entry-label">Time (m:s.00)</span>
+      <label class="entry-row">
+          <span class="entry-label">Time</span>
           <!-- Stays type=text so the mask can hold ':' and '.'; inputmode brings up the
                numeric keypad, and pattern is what older iOS reads for the same thing. -->
           <input type="text" id="mission-time" class="entry-input" inputmode="numeric" pattern="[0-9]*"
                  placeholder="1:23.45" maxlength="8" autocomplete="off">
-        </label>
+      </label>
 
-        <div class="entry-field entry-field-try">
+      <div class="entry-row entry-row-try">
           <span class="entry-label">Try</span>
-          <div class="try-options" id="try-options" role="group" aria-label="Try count">
-            <button type="button" class="try-btn active" data-try="0" aria-pressed="true">0</button>
-            <button type="button" class="try-btn" data-try="1" aria-pressed="false">1</button>
-            <button type="button" class="try-btn" data-try="2" aria-pressed="false">2</button>
-            <button type="button" class="try-btn" data-try="3" aria-pressed="false">3</button>
-            <button type="button" class="try-btn try-btn-other" data-try="other" aria-pressed="false">Other</button>
+          <div class="try-control">
+            <div class="try-options" id="try-options" role="group" aria-label="Try count">
+              <button type="button" class="try-btn active" data-try="0" aria-pressed="true">0</button>
+              <button type="button" class="try-btn" data-try="1" aria-pressed="false">1</button>
+              <button type="button" class="try-btn" data-try="2" aria-pressed="false">2</button>
+              <button type="button" class="try-btn" data-try="3" aria-pressed="false">3</button>
+              <button type="button" class="try-btn try-btn-other" data-try="other" aria-pressed="false">Other</button>
+            </div>
+            <input type="text" id="try-other" class="try-other" inputmode="numeric" pattern="[0-9]*"
+                   maxlength="2" placeholder="x" aria-label="Other try count" autocomplete="off" hidden>
           </div>
-          <input type="text" id="try-other" class="try-other" inputmode="numeric" pattern="[0-9]*"
-                 maxlength="2" placeholder="Try count" aria-label="Other try count" autocomplete="off" hidden>
-        </div>
       </div>
     </section>
 
@@ -103,6 +100,15 @@
       </table>
     </section>
 
+    <!-- Existing score and photo controls stay together after the two scoring tables. -->
+    <section class="score-action-bar" aria-label="Score and photo">
+      <div class="total-score-badge">
+        <span class="total-label">Total Score</span>
+        <span class="total-score" id="total-score">0</span>
+      </div>
+      <button class="btn-action btn-photo" id="btn-photo" title="Photo">Photo</button>
+    </section>
+
     <!-- Hidden Camera / File Input -->
     <input type="file" id="photo-input" accept="image/*" capture="environment" style="display: none;">
 
@@ -123,15 +129,15 @@
     <section class="submit-section">
       <button type="button" class="btn-submit" id="btn-submit">Submit</button>
       <p class="submit-status" id="submit-status" role="status" aria-live="polite"></p>
-      <a class="sheet-link" id="view-submission-link"
-         href="https://docs.google.com/spreadsheets/d/1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc/edit"
-         target="_blank" rel="noopener">View Submission &#8599;</a>
     </section>
 
     <!-- Footer Logo & Device Info -->
     <footer class="app-footer">
-      <div class="device-info">Device ID: <span id="device-id-display">---</span></div>
       <img src="image/syncitylogo.D2qIUmBC.png" alt="Synapse City">
+      <div class="device-info">Device ID: <span id="device-id-display">---</span></div>
+      <a class="sheet-link" id="view-submission-link"
+         href="https://docs.google.com/spreadsheets/d/1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc/edit"
+         target="_blank" rel="noopener">View Submission &#8599;</a>
     </footer>
   </main>
 </body>

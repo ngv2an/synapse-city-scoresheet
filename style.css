@@ -26,65 +26,64 @@ body {
   margin: 0 auto;
 }
 
-/* Sticky Top Header (Fixed on Scroll) */
-.sticky-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: #e7ebef;
-  padding: 8px 0 6px 0;
+/* One compact vertical panel: every requested item owns one full row. */
+.entry-panel {
+  width: 100%;
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid #cfd7e2;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(21, 33, 47, 0.08);
+}
+
+.entry-row {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.entry-panel > .entry-row:last-child {
+  border-bottom: 0;
+}
+
+.entry-label {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.entry-static-value {
+  min-width: 0;
+  overflow: hidden;
+  color: #1e40af;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.competition-banner {
+  text-align: left;
+}
+
+.competition-meta {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 6px;
 }
 
-/* Competition Banner */
-.competition-banner {
-  text-align: center;
-  font-size: clamp(13px, 3.2vw, 16px);
-  font-weight: 900;
-  color: #1e40af;
-  letter-spacing: 0.02em;
-  padding: 4px 8px;
-  background: #dbeafe;
-  border: 1px solid #bfdbfe;
-  border-radius: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Competition Date, current Round, and Level */
-.competition-meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 3px 8px;
-  margin-top: -2px;
-  padding: 0 8px;
-  font-size: clamp(10px, 2.6vw, 12px);
-  font-weight: 700;
-  line-height: 1.3;
-  color: #475569;
-}
-
-/* An item with nothing to say must not leave its gap behind. */
 .competition-meta > span:empty {
   display: none;
-}
-
-.meta-round::before,
-.meta-level::before {
-  content: '\2022 ';
-  margin-right: 7px;
-  color: #94a3b8;
-}
-
-/* Nothing sits in front of it, so there is nothing to separate from. */
-.meta-date:empty + .meta-round::before,
-.meta-date:empty + .meta-round:empty + .meta-level::before {
-  content: none;
 }
 
 .meta-round,
@@ -92,9 +91,18 @@ body {
   color: #1e40af;
 }
 
-/* The Config tab hands the level over lowercase; it has to read as a word next to "Round 2". */
 .meta-level {
   text-transform: capitalize;
+}
+
+.meta-round:not(:empty)::before {
+  content: '-';
+  margin-right: 6px;
+  color: #94a3b8;
+}
+
+.meta-level:empty + .meta-round::before {
+  content: none;
 }
 
 /* Waiting for the first round reads differently from being in one. */
@@ -109,9 +117,8 @@ body {
 /* Device clock does not match the competition date */
 .date-warning {
   text-align: center;
-  padding: 4px 8px;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #fecaca;
   background: #fee2e2;
   color: #b91c1c;
   font-size: clamp(10px, 2.6vw, 12px);
@@ -125,9 +132,18 @@ body {
 }
 
 /* Try: the four common answers as buttons, plus a way out */
+.try-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
 .try-options {
   display: flex;
   gap: 4px;
+  flex: 1;
+  min-width: 0;
 }
 
 .try-btn {
@@ -165,49 +181,14 @@ body {
 }
 
 .try-other {
-  margin-top: 4px;
-}
-
-/* Metadata & Run Entry Bar */
-.entry-bar {
-  width: 100%;
-}
-
-.entry-grid {
-  display: grid;
-  /* Keep the same compact two-row arrangement on desktop and mobile. */
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.entry-field {
-  grid-column: span 3;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  flex: 0 0 48px;
+  width: 48px;
   min-width: 0;
+  text-align: center;
 }
 
-.entry-field-time {
-  grid-column: span 2;
-}
-
-.entry-field-try {
-  grid-column: span 4;
-}
-
-.entry-label {
-  padding-left: 2px;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.entry-field input,
-.entry-field select {
+.entry-row input,
+.entry-row select {
   width: 100%;
   min-height: 38px;
   padding: 5px 8px;
@@ -221,19 +202,19 @@ body {
   font-weight: 700;
 }
 
-.entry-field input:focus,
-.entry-field select:focus {
+.entry-row input:focus,
+.entry-row select:focus {
   outline: none;
   border-color: #007bff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.18);
 }
 
-.entry-field input[aria-invalid="true"] {
+.entry-row input[aria-invalid="true"] {
   border-color: #dc2626;
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.16);
 }
 
-.entry-field input::placeholder {
+.entry-row input::placeholder {
   color: #a8b4c2;
   font-weight: 400;
 }
@@ -649,5 +630,17 @@ body {
   height: auto;
   max-height: 44px;
   display: block;
-  margin: 0 auto;
+  margin: 0 auto 10px auto;
+}
+
+@media (max-width: 420px) {
+  .entry-row {
+    grid-template-columns: 106px minmax(0, 1fr);
+    gap: 6px;
+    padding-inline: 7px;
+  }
+
+  .entry-label {
+    font-size: 10px;
+  }
 }
