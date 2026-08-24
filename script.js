@@ -753,7 +753,17 @@ const SynapseScoresheet = (() => {
         opts += `<option value="${escapeHtml(j)}">${escapeHtml(j)}</option>`;
       });
       judgeSelect.innerHTML = opts;
-      judgeSelect.value = optionExists(judgeSelect, currentVal) ? currentVal : '';
+
+      const onlyJudge = data.judges.length === 1 ? String(data.judges[0]).trim() : '';
+      judgeSelect.value = onlyJudge || (optionExists(judgeSelect, currentVal) ? currentVal : '');
+
+      // A competition with one judge has no choice to make. Select that judge immediately
+      // and remember it just like a manual selection, so refreshes keep the same state.
+      if (onlyJudge) {
+        try {
+          localStorage.setItem(JUDGE_KEY, onlyJudge);
+        } catch (e) {}
+      }
     }
 
     // Populate Teams
