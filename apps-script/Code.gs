@@ -274,7 +274,11 @@ function getScoreSheet_(sheetId) {
   let sheet = ss.getSheetByName(SHEET_NAME_SCORES);
 
   if (!sheet) sheet = ss.insertSheet(SHEET_NAME_SCORES);
-  if (sheet.getLastRow() === 0) writeScoreHeaders_(sheet);
+  if (sheet.getLastRow() === 0) {
+    writeScoreHeaders_(sheet);
+  } else {
+    formatSubmissionTimeColumn_(sheet);
+  }
 
   return sheet;
 }
@@ -287,6 +291,10 @@ function writeScoreHeaders_(sheet) {
 
   // The cell keeps a full timestamp so sorting still works across a day; only the display
   // drops the date. Applied to the whole column so appended rows inherit it.
+  formatSubmissionTimeColumn_(sheet);
+}
+
+function formatSubmissionTimeColumn_(sheet) {
   sheet.getRange('A:A').setNumberFormat('HH:mm:ss');
 }
 
