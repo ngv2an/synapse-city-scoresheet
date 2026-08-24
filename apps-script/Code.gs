@@ -17,7 +17,7 @@ const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
 const SHEET_NAME_SCORES = 'Scores';
 const SHEET_NAME_CONFIG = 'Config';
 const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
-const DRIVE_FOLDER_ID = ''; // Optional Google Drive Folder ID to store photos (leave empty to skip Drive upload)
+const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C';
 
 /**
  * Column order of the Scores tab. The block columns follow the order the judge sees them
