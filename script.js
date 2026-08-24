@@ -47,6 +47,7 @@ const SynapseScoresheet = (() => {
 
   const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
   const METADATA_KEY_PREFIX = 'scoresheet.metadata.';
+  const DRAFT_KEY_PREFIX = 'scoresheet.draft.';
   const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
 
@@ -64,6 +65,8 @@ const SynapseScoresheet = (() => {
   // Try: one of the 0-3 buttons, or a free number once Other is picked.
   let tryValue = 0;
   let tryIsOther = false;
+  // Team options arrive with metadata, so keep the restored value until that list exists.
+  let restoredTeam = '';
 
   function escapeHtml(str) {
     return String(str)
@@ -98,6 +101,78 @@ const SynapseScoresheet = (() => {
       } catch (e) {}
     }
     return devId;
+  }
+
+  function getDraftKey() {
+    return DRAFT_KEY_PREFIX + getActiveSheetId();
+  }
+
+  function saveDraft() {
+    const timeInput = document.getElementById('mission-time');
+    const otherInput = document.getElementById('try-other');
+    const selectedTeam = getSelectedTeam();
+
+    try {
+      localStorage.setItem(getDraftKey(), JSON.stringify({
+        version: 1,
+        level: activeLevel,
+        team: selectedTeam || restoredTeam,
+        missionTime: timeInput ? timeInput.value : '',
+        tryValue: tryValue,
+        tryIsOther: tryIsOther,
+        tryOther: otherInput ? otherInput.value : '',
+        scores: Object.assign({}, scoreState),
+        leanbots: Object.assign({}, leanbotState),
+      }));
+    } catch (e) {}
+  }
+
+  function restoreDraft() {
+    let draft;
+    try {
+      draft = JSON.parse(localStorage.getItem(getDraftKey()));
+    } catch (e) {
+      return;
+    }
+    if (!draft || typeof draft !== 'object') return;
+
+    const savedLevel = String(draft.level || '').toLowerCase();
+    if (LEVELS[savedLevel]) activeLevel = savedLevel;
+
+    const savedScores = draft.scores && typeof draft.scores === 'object' ? draft.scores : {};
+    ALL_BLOCKS.forEach((block) => {
+      const selected = savedScores[block.id];
+      const valid = ['containment', 'neutralization', 'analysis'].includes(selected);
+      if (valid && !isMissionDisabled(block.id, selected)) scoreState[block.id] = selected;
+    });
+
+    const savedLeanbots = draft.leanbots && typeof draft.leanbots === 'object' ? draft.leanbots : {};
+    ALL_LEANBOTS.forEach((bot) => {
+      leanbotState[bot.id] = savedLeanbots[bot.id] === true;
+    });
+
+    restoredTeam = typeof draft.team === 'string' ? draft.team : '';
+
+    const timeInput = document.getElementById('mission-time');
+    if (timeInput) timeInput.value = formatMissionTime(draft.missionTime || '');
+
+    const savedTryValue = Number(draft.tryValue);
+    tryValue = Number.isInteger(savedTryValue) && savedTryValue >= 0 && savedTryValue <= 3
+      ? savedTryValue
+      : 0;
+    tryIsOther = draft.tryIsOther === true;
+
+    const otherInput = document.getElementById('try-other');
+    if (otherInput) {
+      otherInput.value = String(draft.tryOther || '').replace(/\D/g, '').slice(0, 2);
+    }
+  }
+
+  function clearDraft() {
+    restoredTeam = '';
+    try {
+      localStorage.removeItem(getDraftKey());
+    } catch (e) {}
   }
 
   function isMissionDisabled(blockId, missionType) {
@@ -270,6 +345,7 @@ const SynapseScoresheet = (() => {
 
     updateRowVisuals(blockId);
     updateTotalScore();
+    saveDraft();
   }
 
   function updateRowVisuals(blockId) {
@@ -298,6 +374,7 @@ const SynapseScoresheet = (() => {
 
     updateLeanbotRowVisuals(botId);
     updateTotalScore();
+    saveDraft();
   }
 
   function updateLeanbotRowVisuals(botId) {
@@ -445,6 +522,7 @@ const SynapseScoresheet = (() => {
     initScoreState();
     clearPhoto();
     renderTable();
+    clearDraft();
   }
 
   async function loadMetadata() {
@@ -652,13 +730,14 @@ const SynapseScoresheet = (() => {
     // Populate Teams
     const teamSelect = document.getElementById('team-select');
     if (teamSelect && Array.isArray(data.teams)) {
-      const currentVal = getSelectedTeam();
+      const currentVal = getSelectedTeam() || restoredTeam;
       let opts = '<option value="">-- Select Team --</option>';
       data.teams.forEach((t) => {
         opts += `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`;
       });
       teamSelect.innerHTML = opts;
       teamSelect.value = optionExists(teamSelect, currentVal) ? currentVal : '';
+      restoredTeam = teamSelect.value;
     }
   }
 
@@ -848,6 +927,14 @@ const SynapseScoresheet = (() => {
       });
     }
 
+    const teamSelect = document.getElementById('team-select');
+    if (teamSelect) {
+      teamSelect.addEventListener('change', () => {
+        restoredTeam = teamSelect.value;
+        saveDraft();
+      });
+    }
+
     // Try buttons. Other reveals a number field and focuses it, which is what raises the
     // numeric keypad on a phone - the buttons alone never open one.
     const tryOptions = document.getElementById('try-options');
@@ -868,6 +955,7 @@ const SynapseScoresheet = (() => {
           other.focus();
           other.select();
         }
+        saveDraft();
       });
     }
 
@@ -878,6 +966,7 @@ const SynapseScoresheet = (() => {
         tryOther.value = tryOther.value.replace(/\D/g, '').slice(0, 2);
         tryOther.removeAttribute('aria-invalid');
         if (hadTryError) setSubmitStatus('', null);
+        saveDraft();
       });
     }
 
@@ -886,6 +975,7 @@ const SynapseScoresheet = (() => {
     if (timeInput) {
       timeInput.addEventListener('input', () => {
         timeInput.value = formatMissionTime(timeInput.value);
+        saveDraft();
       });
     }
 
@@ -909,6 +999,7 @@ const SynapseScoresheet = (() => {
     if (devDisplay) devDisplay.textContent = devId;
 
     initScoreState();
+    restoreDraft();
     renderTable();
     renderLevel();
     renderTryButtons();
