@@ -649,15 +649,14 @@ const SynapseScoresheet = (() => {
     el.classList.toggle('is-ended', state.ended);
   }
 
-  function formatDeviceDate(date) {
-    const pad = (n) => String(n).padStart(2, '0');
-    return pad(date.getDate()) + '/' + pad(date.getMonth() + 1) + '/' + pad(date.getFullYear() % 100);
-  }
-
   function isCompetitionDate(now, expected) {
     return now.getFullYear() === expected[0]
       && now.getMonth() === expected[1]
       && now.getDate() === expected[2];
+  }
+
+  function getCompetitionDateError() {
+    return 'Error: Competition setup for ' + competitionInfo.competitionDate;
   }
 
   /**
@@ -676,11 +675,7 @@ const SynapseScoresheet = (() => {
     }
 
     const now = new Date();
-    const sameDay = isCompetitionDate(now, expected);
-
-    el.textContent = sameDay ? '' : 'Wrong device date: ' + formatDeviceDate(now)
-      + ' - competition is ' + competitionInfo.competitionDate
-      + '. Check the device clock, the round above is unreliable.';
+    el.textContent = isCompetitionDate(now, expected) ? '' : getCompetitionDateError();
   }
 
   function renderClock() {
@@ -790,8 +785,7 @@ const SynapseScoresheet = (() => {
     if (!expectedDate || !schedule.valid) {
       reasons.push('Competition date or schedule is missing or invalid.');
     } else if (!isCompetitionDate(now, expectedDate)) {
-      reasons.push('Device date ' + formatDeviceDate(now)
-        + ' does not match competition date ' + competitionInfo.competitionDate + '.');
+      reasons.push(getCompetitionDateError());
     } else {
       const state = resolveRound(now);
       if (state.ended) {
