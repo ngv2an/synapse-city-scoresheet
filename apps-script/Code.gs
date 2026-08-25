@@ -23,6 +23,7 @@ const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
 const LEGACY_SHEET_NAME_SCORES = 'Scores';
 const SCORE_SHEET_PREFIX = 'Scores - ';
 const SHEET_NAME_CONFIG = 'Config';
+const SHEET_NAME_LOGS = 'Logs';
 const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
 const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C';
 const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
@@ -45,6 +46,13 @@ const HEADERS_SCORES = [
   'Submission Time', 'Device ID', 'Level', 'Judge', 'Team', 'Round', 'Score', 'Time', 'Try',
   '', 'Green', 'Blue', 'Purple', 'Mystery', 'Red', 'Yellow 1', 'Yellow 2', 'Leanbot 1', 'Leanbot 2',
   'Photo URL', 'Submission ID', 'User Agent'
+];
+
+/**
+ * Column order of the system Logs tab for monitoring performance and usage.
+ */
+const HEADERS_LOGS = [
+  'Timestamp', 'Action', 'Level', 'Judge', 'Team', 'Duration (s)', 'Photo Size (KB)', 'Status', 'Submission ID', 'Error / Notes'
 ];
 
 /**
@@ -376,15 +384,21 @@ function createConfigSheet_(ss, levelTitle, config, index) {
  * POST Handler: Appends a scoring run into Scores tab
  */
 function doPost(e) {
+  const startTime = Date.now();
   const lock = LockService.getScriptLock();
+  let targetSs = null;
+  let body = null;
+  let id = '';
+  let photoSizeKb = 0;
+  let levelTitle = '';
 
   try {
-    const body = JSON.parse(e.postData.contents);
+    body = JSON.parse(e.postData.contents);
     if (body.key !== SHARED_KEY) {
       return json({ ok: false, error: 'unauthorized' });
     }
 
-    const id = String(body.submissionId || Utilities.getUuid());
+    id = String(body.submissionId || Utilities.getUuid());
 
     // Deduplication via cache
     const cache = CacheService.getScriptCache();
@@ -394,12 +408,14 @@ function doPost(e) {
     }
 
     const sheetId = resolveSheetId_(body.sheetId || body.link);
+    targetSs = SpreadsheetApp.openById(sheetId);
+    photoSizeKb = body.photoBase64 ? Math.round(body.photoBase64.length * 0.75 / 1024) : 0;
     const photoUrl = body.photoBase64 ? savePhoto_(id, body.photoBase64) : '';
 
     // Wait for lock to append row safely
     lock.waitLock(30000);
-    const sheet = getScoreSheet_(sheetId);
-    const levelTitle = sheet.getName().slice(SCORE_SHEET_PREFIX.length);
+    const sheet = prepareScoreSheet_(targetSs);
+    levelTitle = sheet.getName().slice(SCORE_SHEET_PREFIX.length);
     const s = body.scores || {};
 
     sheet.appendRow([
@@ -432,9 +448,37 @@ function doPost(e) {
     // when the column was formatted already, so format this exact cell after the append.
     sheet.getRange(row, 1).setNumberFormat(SUBMISSION_TIME_FORMAT);
     cache.put(id, String(row), 21600); // 6 hours
+
+    // Record system performance log
+    const duration = Number(((Date.now() - startTime) / 1000).toFixed(2));
+    logActivity_(targetSs, {
+      action: 'Submit',
+      level: levelTitle,
+      judge: body.judge || '',
+      team: body.team || '',
+      duration: duration,
+      photoSizeKb: photoSizeKb,
+      status: 'OK',
+      submissionId: id
+    });
+
     return json({ ok: true, submissionId: id, row: row });
 
   } catch (err) {
+    if (targetSs) {
+      const duration = Number(((Date.now() - startTime) / 1000).toFixed(2));
+      logActivity_(targetSs, {
+        action: 'Submit',
+        level: levelTitle,
+        judge: body ? body.judge : '',
+        team: body ? body.team : '',
+        duration: duration,
+        photoSizeKb: photoSizeKb,
+        status: 'ERROR',
+        submissionId: id,
+        error: String(err)
+      });
+    }
     return json({ ok: false, error: String(err) });
   } finally {
     lock.releaseLock();
@@ -619,4 +663,50 @@ function savePhoto_(id, dataUrl) {
 function json(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Records system usage metrics into the Logs tab for live monitoring.
+ */
+function logActivity_(ss, entry) {
+  try {
+    if (!ss) return;
+    let sheet = ss.getSheetByName(SHEET_NAME_LOGS);
+    if (!sheet) {
+      sheet = ss.insertSheet(SHEET_NAME_LOGS);
+      sheet.getRange(1, 1, 1, HEADERS_LOGS.length)
+        .setValues([HEADERS_LOGS])
+        .setFontWeight('bold');
+      sheet.setFrozenRows(1);
+      sheet.setColumnWidth(1, 160); // Timestamp
+      sheet.setColumnWidth(2, 90);  // Action
+      sheet.setColumnWidth(3, 100); // Level
+      sheet.setColumnWidth(4, 140); // Judge
+      sheet.setColumnWidth(5, 160); // Team
+      sheet.setColumnWidth(6, 110); // Duration (s)
+      sheet.setColumnWidth(7, 130); // Photo Size (KB)
+      sheet.setColumnWidth(8, 90);  // Status
+      sheet.setColumnWidth(9, 220); // Submission ID
+      sheet.setColumnWidth(10, 220); // Error / Notes
+    }
+
+    sheet.appendRow([
+      new Date(),
+      entry.action || 'Submit',
+      entry.level || '',
+      entry.judge || '',
+      entry.team || '',
+      entry.duration !== undefined ? Number(entry.duration) : '',
+      entry.photoSizeKb !== undefined ? Number(entry.photoSizeKb) : 0,
+      entry.status || 'OK',
+      entry.submissionId || '',
+      entry.error || ''
+    ]);
+
+    const row = sheet.getLastRow();
+    sheet.getRange(row, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+  } catch (err) {
+    // Non-blocking: failure in logging must never disrupt normal scoring
+    console.error('System log error:', err);
+  }
 }
