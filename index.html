@@ -195,6 +195,24 @@
       </section>
     </div>
 
+    <!-- Anything that throws lands here, spelled out so a judge can report it. -->
+    <div class="history-modal error-modal" id="error-modal" hidden>
+      <section class="history-dialog error-dialog" role="alertdialog" aria-modal="true"
+               aria-labelledby="error-title" aria-describedby="error-detail">
+        <header class="history-dialog-header">
+          <h2 id="error-title">Something went wrong</h2>
+          <button type="button" class="history-close" id="error-close"
+                  aria-label="Close error">&times;</button>
+        </header>
+        <div class="error-content">
+          <pre class="error-detail" id="error-detail"></pre>
+        </div>
+        <footer class="error-actions">
+          <button type="button" class="btn-error-copy" id="error-copy">Copy</button>
+        </footer>
+      </section>
+    </div>
+
     <div class="history-modal" id="history-modal" hidden>
       <section class="history-dialog" role="dialog" aria-modal="true" aria-labelledby="history-dialog-title">
         <header class="history-dialog-header">

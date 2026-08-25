@@ -90,6 +90,11 @@ const SynapseScoresheet = (() => {
   let historyLastFocus = null;
   let timetableTicker = null;
   let timetableLastFocus = null;
+  let errorLastFocus = null;
+  let lastErrorReport = '';
+  // One report per distinct fault. A ticker that throws would otherwise reopen the dialog
+  // every second, and the judge only has to tell the organiser about it once.
+  const reportedErrors = {};
 
   function escapeHtml(str) {
     return String(str)
@@ -123,6 +128,133 @@ const SynapseScoresheet = (() => {
 
     const size = formatBytes_(info.bytes);
     return info.width + ' × ' + info.height + (size ? ' · ' + size : '');
+  }
+
+  function errorMessageOf_(err) {
+    if (!err) return 'Unknown error';
+    if (typeof err === 'string') return err;
+    if (err.message) return String(err.name ? err.name + ': ' + err.message : err.message);
+
+    try {
+      return JSON.stringify(err);
+    } catch (e) {
+      return String(err);
+    }
+  }
+
+  /** Reads a value for the report without ever becoming the thing that fails. */
+  function safely_(fn) {
+    try {
+      const value = fn();
+      return value === undefined || value === null || value === '' ? '-' : String(value);
+    } catch (e) {
+      return '-';
+    }
+  }
+
+  /**
+   * Everything the organiser would otherwise have to ask for, in one block a judge can
+   * screenshot: what broke, where, and which device and run it happened on.
+   */
+  function buildErrorReport_(context, err) {
+    const now = new Date();
+    const stack = err && err.stack ? String(err.stack) : '';
+
+    const lines = [
+      'When   : ' + now.toLocaleString(),
+      'Where  : ' + context,
+      'What   : ' + errorMessageOf_(err),
+      '',
+      'Device : ' + safely_(getOrCreateDeviceId),
+      'Sheet  : ' + safely_(getActiveSheetId),
+      'Level  : ' + safely_(() => activeLevel),
+      'Judge  : ' + safely_(getSelectedJudge),
+      'Team   : ' + safely_(getSelectedTeam),
+      'Queued : ' + safely_(pendingCount),
+      'Page   : ' + safely_(() => window.location.href),
+      'Browser: ' + safely_(() => navigator.userAgent)
+    ];
+
+    // The top frames say where it came from; the rest is noise on a phone screen.
+    if (stack) lines.push('', stack.split('\n').slice(0, 8).join('\n'));
+    return lines.join('\n');
+  }
+
+  function showError_(context, err) {
+    try {
+      const report = buildErrorReport_(context, err);
+      // Same fault, same place - already reported.
+      const key = context + '|' + errorMessageOf_(err);
+      if (reportedErrors[key]) return;
+      reportedErrors[key] = true;
+
+      console.error('[' + context + ']', err);
+
+      const modal = document.getElementById('error-modal');
+      const detail = document.getElementById('error-detail');
+      if (!modal || !detail) return;
+
+      lastErrorReport = report;
+      detail.textContent = report;
+
+      // A dialog already up is answering an earlier fault; do not shove it aside.
+      if (!modal.hidden) return;
+
+      errorLastFocus = document.activeElement;
+      modal.hidden = false;
+      document.body.classList.add('error-modal-open');
+
+      const close = document.getElementById('error-close');
+      if (close) close.focus();
+    } catch (e) {
+      console.error('Could not report error:', e, err);
+    }
+  }
+
+  function closeError_() {
+    const modal = document.getElementById('error-modal');
+    if (!modal || modal.hidden) return;
+
+    modal.hidden = true;
+    document.body.classList.remove('error-modal-open');
+    if (errorLastFocus && typeof errorLastFocus.focus === 'function') errorLastFocus.focus();
+    errorLastFocus = null;
+  }
+
+  /**
+   * The venue often serves this over plain http on a LAN address, where the async clipboard
+   * API does not exist, so the old selection copy is the one that has to work.
+   */
+  function copyErrorReport_() {
+    const button = document.getElementById('error-copy');
+    const done = (ok) => {
+      if (!button) return;
+      button.textContent = ok ? 'Copied' : 'Press and hold to copy';
+      setTimeout(() => {
+        if (button.textContent !== 'Copy') button.textContent = 'Copy';
+      }, 2500);
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(lastErrorReport).then(() => done(true), () => done(false));
+      return;
+    }
+
+    try {
+      const area = document.createElement('textarea');
+      area.value = lastErrorReport;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      area.setSelectionRange(0, lastErrorReport.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(area);
+      done(ok);
+    } catch (e) {
+      done(false);
+    }
   }
 
   function getActiveSheetId() {
@@ -949,7 +1081,7 @@ const SynapseScoresheet = (() => {
       setConfigLoadingState('', null);
       return true;
     } catch (err) {
-      console.warn('Could not fetch sheet metadata:', err);
+      showError_('Loading Config', err);
       // A failed reload leaves the Config already on screen alone. Only a cold start with
       // nothing to show has to stay behind the loading card.
       if (!force) setConfigLoadingState('Could not load Config. Please reload.', 'error');
@@ -1418,6 +1550,7 @@ const SynapseScoresheet = (() => {
         );
       } else {
         setSubmitStatus('Submit failed: ' + err.message, 'error');
+        showError_('Submitting a run', err);
       }
 
     } finally {
@@ -1544,6 +1677,7 @@ const SynapseScoresheet = (() => {
             });
         }).catch((err) => {
           setSubmitStatus(err.message, 'error');
+          showError_('Reading the photo', err);
         });
       });
     }
@@ -1691,15 +1825,42 @@ const SynapseScoresheet = (() => {
       if (!document.hidden) renderClock();
     });
 
+    const errorClose = document.getElementById('error-close');
+    if (errorClose) errorClose.addEventListener('click', closeError_);
+
+    const errorCopy = document.getElementById('error-copy');
+    if (errorCopy) errorCopy.addEventListener('click', copyErrorReport_);
+
+    const errorModal = document.getElementById('error-modal');
+    if (errorModal) {
+      errorModal.addEventListener('click', (e) => {
+        if (e.target === errorModal) closeError_();
+      });
+    }
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        closeError_();
         closeSubmissionHistory_();
         closeTimetable_();
       }
     });
   }
 
+  /** Nothing else has to remember to report: whatever escapes a handler lands here. */
+  function installErrorReporting_() {
+    window.addEventListener('error', (e) => {
+      showError_('Uncaught error', e.error || e.message || e);
+    });
+
+    window.addEventListener('unhandledrejection', (e) => {
+      showError_('Unhandled promise', e.reason);
+    });
+  }
+
   function init() {
+    installErrorReporting_();
+
     const devId = getOrCreateDeviceId();
     const devDisplay = document.getElementById('device-id-display');
     if (devDisplay) devDisplay.textContent = devId;
