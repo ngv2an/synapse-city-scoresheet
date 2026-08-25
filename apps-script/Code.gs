@@ -20,11 +20,19 @@
  */
 
 const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
-const SHEET_NAME_SCORES = 'Scores';
+const LEGACY_SHEET_NAME_SCORES = 'Scores';
+const SCORE_SHEET_PREFIX = 'Scores - ';
 const SHEET_NAME_CONFIG = 'Config';
 const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
 const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C';
 const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
+
+const SCORE_LEVEL_TITLES = {
+  explorer: 'Explorer',
+  creator: 'Creator',
+  innovator: 'Innovator',
+  master: 'Master'
+};
 
 /**
  * Column order of the Scores tab. The block columns follow the order the judge sees them
@@ -282,11 +290,58 @@ function resolveSheetId_(input) {
   return str;
 }
 
+/** Returns the active Scores tab name, for example "Scores - Explorer". */
+function getScoreSheetName_(ss) {
+  const level = readConfig_(ss).level;
+  const levelTitle = SCORE_LEVEL_TITLES[level];
+
+  if (!levelTitle) {
+    throw new Error(
+      'Config Level must be Explorer, Creator, Innovator, or Master; received "' + level + '".'
+    );
+  }
+
+  return SCORE_SHEET_PREFIX + levelTitle;
+}
+
+/**
+ * Finds the active Scores tab. This also recognizes the old "Scores" name and a tab
+ * carrying a different level name, which is what a newly copied spreadsheet contains.
+ */
+function findScoreSheet_(ss, expectedName) {
+  const exact = ss.getSheetByName(expectedName);
+  if (exact) return exact;
+
+  const legacy = ss.getSheetByName(LEGACY_SHEET_NAME_SCORES);
+  if (legacy) return legacy;
+
+  const levelSheets = ss.getSheets().filter(function (sheet) {
+    return /^Scores - (Explorer|Creator|Innovator|Master)$/.test(sheet.getName());
+  });
+
+  if (levelSheets.length > 1) {
+    throw new Error(
+      'More than one active level Scores tab was found. Keep only the tab for this file\'s level.'
+    );
+  }
+
+  return levelSheets.length === 1 ? levelSheets[0] : null;
+}
+
+/** Creates the level Scores tab or renames the copied/legacy tab to the current level. */
+function ensureScoreSheet_(ss) {
+  const expectedName = getScoreSheetName_(ss);
+  let sheet = findScoreSheet_(ss, expectedName);
+
+  if (!sheet) return ss.insertSheet(expectedName);
+  if (sheet.getName() !== expectedName) sheet.setName(expectedName);
+  return sheet;
+}
+
 function getScoreSheet_(sheetId) {
   const ss = SpreadsheetApp.openById(sheetId);
-  let sheet = ss.getSheetByName(SHEET_NAME_SCORES);
+  const sheet = ensureScoreSheet_(ss);
 
-  if (!sheet) sheet = ss.insertSheet(SHEET_NAME_SCORES);
   if (sheet.getLastRow() === 0) {
     writeScoreHeaders_(sheet);
   } else {
@@ -294,6 +349,20 @@ function getScoreSheet_(sheetId) {
   }
 
   return sheet;
+}
+
+/**
+ * Container-bound copies run these simple triggers automatically. Opening a copy or
+ * editing its Config tab updates the Scores tab name after its Level changes.
+ */
+function onOpen(e) {
+  const ss = e && e.source ? e.source : SpreadsheetApp.getActiveSpreadsheet();
+  if (ss) ensureScoreSheet_(ss);
+}
+
+function onEdit(e) {
+  if (!e || !e.range || e.range.getSheet().getName() !== SHEET_NAME_CONFIG) return;
+  ensureScoreSheet_(e.source);
 }
 
 function writeScoreHeaders_(sheet) {
@@ -318,14 +387,15 @@ function formatSubmissionTimeColumn_(sheet) {
  */
 function resetScoresSheet() {
   const ss = SpreadsheetApp.openById(DEFAULT_SHEET_ID);
-  const existing = ss.getSheetByName(SHEET_NAME_SCORES);
+  const scoreSheetName = getScoreSheetName_(ss);
+  const existing = findScoreSheet_(ss, scoreSheetName);
 
   if (existing) {
     const stamp = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd HHmm');
-    existing.setName(SHEET_NAME_SCORES + ' (old ' + stamp + ')');
+    existing.setName(scoreSheetName + ' (old ' + stamp + ')');
   }
 
-  writeScoreHeaders_(ss.insertSheet(SHEET_NAME_SCORES));
+  writeScoreHeaders_(ss.insertSheet(scoreSheetName));
 }
 
 function savePhoto_(id, dataUrl) {
