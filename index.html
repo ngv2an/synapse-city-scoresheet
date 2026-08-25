@@ -58,11 +58,11 @@
       </label>
 
       <label class="entry-row">
-          <span class="entry-label">Time (mm:ss.ss)</span>
+          <span class="entry-label entry-label-time">TIME (m:ss.ss)</span>
           <!-- Stays type=text so the mask can hold ':' and '.'; inputmode brings up the
                numeric keypad, and pattern is what older iOS reads for the same thing. -->
           <input type="text" id="mission-time" class="entry-input" inputmode="numeric" pattern="[0-9]*"
-                 placeholder="1:23.45" maxlength="7" autocomplete="off">
+                 value="2:00.00" placeholder="2:00.00" maxlength="7" autocomplete="off">
       </label>
 
       <div class="entry-row entry-row-try">

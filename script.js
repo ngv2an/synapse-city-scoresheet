@@ -52,6 +52,7 @@ const SynapseScoresheet = (() => {
   const HISTORY_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
   const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
+  const DEFAULT_MISSION_TIME = '2:00.00';
 
   const HISTORY_MISSION_NAMES = {
     containment: 'Containment',
@@ -169,7 +170,7 @@ const SynapseScoresheet = (() => {
     restoredTeam = typeof draft.team === 'string' ? draft.team : '';
 
     const timeInput = document.getElementById('mission-time');
-    if (timeInput) timeInput.value = formatMissionTime(draft.missionTime || '');
+    if (timeInput) timeInput.value = formatMissionTime(draft.missionTime || DEFAULT_MISSION_TIME);
 
     const savedTryValue = Number(draft.tryValue);
     tryValue = Number.isInteger(savedTryValue) && savedTryValue >= 0 && savedTryValue <= 3
@@ -737,7 +738,7 @@ const SynapseScoresheet = (() => {
     // Reset Time and Try
     const timeInput = document.getElementById('mission-time');
     if (timeInput) {
-      timeInput.value = '';
+      timeInput.value = DEFAULT_MISSION_TIME;
       timeInput.removeAttribute('aria-invalid');
     }
     resetTry();
@@ -1102,11 +1103,13 @@ const SynapseScoresheet = (() => {
     }
 
     const timeInput = document.getElementById('mission-time');
-    const missionTime = timeInput ? timeInput.value.trim() : '';
+    let missionTime = timeInput ? timeInput.value.trim() : '';
     if (!missionTime) {
-      reasons.push('Time is required.');
-      if (timeInput) timeInput.setAttribute('aria-invalid', 'true');
-      if (!focusTarget) focusTarget = timeInput;
+      missionTime = DEFAULT_MISSION_TIME;
+      if (timeInput) {
+        timeInput.value = DEFAULT_MISSION_TIME;
+        timeInput.removeAttribute('aria-invalid');
+      }
     }
 
     const tryCount = getTryCount();

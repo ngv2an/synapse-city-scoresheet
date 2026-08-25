@@ -134,6 +134,10 @@ body {
   white-space: nowrap;
 }
 
+.entry-label-time {
+  text-transform: none;
+}
+
 .entry-static-value {
   min-width: 0;
   overflow: hidden;
