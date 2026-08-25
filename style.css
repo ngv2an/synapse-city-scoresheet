@@ -99,8 +99,13 @@ body {
   display: none;
 }
 
-/* One compact vertical panel: every requested item owns one full row. */
+/* One compact vertical panel: every requested item owns one full row.
+   The panel itself is the grid, so the label column is sized once from the
+   widest label instead of a fixed width guessed for the longest of them. */
 .entry-panel {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 8px;
   width: 100%;
   margin-top: 0;
   overflow: hidden;
@@ -110,17 +115,36 @@ body {
   box-shadow: 0 2px 8px rgba(21, 33, 47, 0.08);
 }
 
+/* The row is a grouping wrapper only: its two cells sit on the panel grid. */
 .entry-row {
-  display: grid;
-  grid-template-columns: 128px minmax(0, 1fr);
+  display: contents;
+}
+
+.entry-label,
+.entry-cell {
+  display: flex;
   align-items: center;
-  gap: 8px;
   min-height: 46px;
-  padding: 4px 8px;
+  padding-block: 4px;
   border-bottom: 1px solid #e2e8f0;
 }
 
-.entry-panel > .entry-row:last-child {
+.entry-label {
+  padding-left: 8px;
+}
+
+.entry-cell {
+  min-width: 0;
+  padding-right: 8px;
+}
+
+.entry-cell > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.entry-panel > .entry-row:last-child > .entry-label,
+.entry-panel > .entry-row:last-child > .entry-cell {
   border-bottom: 0;
 }
 
@@ -251,7 +275,7 @@ body {
 
 .competition-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 8px;
   width: min(100%, 420px);
 }
@@ -259,7 +283,8 @@ body {
 .btn-reload-config {
   min-width: 0;
   min-height: 40px;
-  padding: 0 8px;
+  padding: 0 12px;
+  white-space: nowrap;
   border: 1px solid #007bff;
   border-radius: 8px;
   background: #ffffff;
@@ -858,7 +883,7 @@ body {
   width: 100%;
   max-width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .history-table th,
@@ -879,26 +904,29 @@ body {
   white-space: nowrap;
 }
 
+/* Time, Round and Score hold short fixed-shape values: width:1% + nowrap makes
+   the auto layout shrink them onto their content and hand the slack to Team. */
 .history-table th:first-child,
-.history-table td:first-child {
-  width: 24%;
+.history-table td:first-child,
+.history-table th:nth-child(2),
+.history-table td:nth-child(2),
+.history-table th:nth-child(4),
+.history-table td:nth-child(4) {
+  width: 1%;
+  white-space: nowrap;
 }
 
 .history-table th:nth-child(2),
-.history-table td:nth-child(2) {
-  width: 16%;
-  text-align: center;
-}
-
-.history-table th:nth-child(3),
-.history-table td:nth-child(3) {
-  width: 42%;
-}
-
+.history-table td:nth-child(2),
 .history-table th:nth-child(4),
 .history-table td:nth-child(4) {
-  width: 18%;
   text-align: center;
+}
+
+/* Team is the only column allowed to grow, so it takes whatever is left. */
+.history-table th:nth-child(3),
+.history-table td:nth-child(3) {
+  width: auto;
 }
 
 .history-entry {
@@ -1241,14 +1269,17 @@ body.error-modal-open {
 }
 
 @media (max-width: 420px) {
-  .entry-row {
-    grid-template-columns: 106px minmax(0, 1fr);
-    gap: 6px;
-    padding-inline: 7px;
+  .entry-panel {
+    column-gap: 6px;
   }
 
   .entry-label {
+    padding-left: 7px;
     font-size: 10px;
+  }
+
+  .entry-cell {
+    padding-right: 7px;
   }
 
   .try-control {
