@@ -662,7 +662,9 @@ body {
 }
 
 .btn-action {
-  flex: 0 0 72px;
+  flex: 0 0 auto;
+  min-width: 140px;
+  padding: 0 16px;
   min-height: 40px;
   border-radius: 8px;
   font-family: inherit;
