@@ -51,27 +51,76 @@ const HEADERS_SCORES = [
  * Config tab layout. A label sits in one cell and its value in the cell to its right,
  * while Judge and Team are column headers with their entries listed underneath:
  *
- *        A          B                  C   D                   E
- *   1  Judge      Team                     Competition Name    Synapse City 123
- *   2                                      Competition Date    24/08/2026
- *   3  Thầy An    Team 01 - Alpha        Round 1 Time        14:00:00
- *   4  Cô Linh    Team 02 - Beta         Round 2 Time        14:30:00
- *   5                                      End Time            15:00:00
- *   6                                      Level               Creator
+ *        A                  B                  C   D                       E
+ *   1  Level              Explorer                 *** Config Source ***   https://…/d/<this file>
+ *   2
+ *   3                                              Competition Name        AIROC Vietnam 2026 testing
+ *   4  Judge              Team                     Competition Date        25/08/2026
+ *   5                                              Round 1 Time            09:00:00
+ *   6  Explorer Judge A   Explorer Team 10         Round 2 Time            13:00:00
+ *   7                     Explorer Team 11         End Time                15:00:00
+ *   8                     Explorer Team 12
  *
  * Nothing is pinned to a fixed cell: the labels are searched for, so extra rows or a
- * shifted block keep working as long as label and value stay side by side.
+ * shifted block keep working as long as label and value stay side by side. Config Source
+ * is written from the file's own ID, so it cannot drift from the file it sits in.
  *
  * The schedule is fixed to Round 1, Round 2, and End Time. Any other Round label is ignored.
+ *
+ * The Explorer file carries one extra block from row 12 listing every level's Sheet and
+ * scoresheet link. Nothing here reads it - it is a directory for the organisers - and it
+ * lives in the Explorer file alone so there is only ever one copy to keep correct:
+ *
+ *        D            E                        F
+ *  12                 Google Sheet             Scoresheet URL
+ *  13   Explorer      https://…/d/1ljm-…       https://…/?link=1ljm-…
+ *  14   Creator       …                        …
+ *  15   Innovator     …                        …
+ *  16   Master        …                        …
  */
-const CONFIG_TEMPLATE = [
-  ['Judge', 'Team', '', 'Competition Name', 'Synapse City 123'],
-  ['', '', '', 'Competition Date', '24/08/2026'],
-  ['Thầy An', 'Team 01 - Alpha', '', 'Round 1 Time', '14:00:00'],
-  ['Cô Linh', 'Team 02 - Beta', '', 'Round 2 Time', '14:30:00'],
-  ['', '', '', 'End Time', '15:00:00'],
-  ['', '', '', 'Level', 'Creator']
+const SHEET_URL_PREFIX = 'https://docs.google.com/spreadsheets/d/';
+const SCORESHEET_URL_PREFIX = 'https://ngv2an.github.io/synapse-city-scoresheet/?link=';
+
+/** Every level's Sheet, in level order. Only the Explorer Config lists them. */
+const LEVEL_SHEET_IDS = [
+  ['Explorer', '1ljm-gzjs3UgJB-fuNghADJn_byl-CtHib0APSNol2T0'],
+  ['Creator', '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc'],
+  ['Innovator', '16E0nKN3FAS44ZiRJAISuG6dJNCrGehCvuInQhtRAyTA'],
+  ['Master', '1fuRBaq0HJ3_w8JRM4wgEN5KhbK534XcDs6gnqGDal4o']
 ];
+
+// Rows 1-8 above: everything this script actually reads back out of the tab.
+const CONFIG_BLOCK_ROWS = 8;
+
+/**
+ * Builds the tab contents for one file. Sample judge and team names carry the level so a
+ * freshly seeded file never looks like it belongs to a different one.
+ */
+function buildConfigTemplate_(levelTitle, sheetId) {
+  const rows = [
+    ['Level', levelTitle, '', '*** Config Source ***', SHEET_URL_PREFIX + sheetId, ''],
+    ['', '', '', '', '', ''],
+    ['', '', '', 'Competition Name', 'AIROC Vietnam 2026 testing', ''],
+    ['Judge', 'Team', '', 'Competition Date', '25/08/2026', ''],
+    ['', '', '', 'Round 1 Time', '09:00:00', ''],
+    [levelTitle + ' Judge A', levelTitle + ' Team 10', '', 'Round 2 Time', '13:00:00', ''],
+    ['', levelTitle + ' Team 11', '', 'End Time', '15:00:00', ''],
+    ['', levelTitle + ' Team 12', '', '', '', '']
+  ];
+
+  if (levelTitle !== 'Explorer') return rows;
+
+  rows.push(['', '', '', '', '', '']);
+  rows.push(['', '', '', '', '', '']);
+  rows.push(['', '', '', '', '', '']);
+  rows.push(['', '', '', '', 'Google Sheet', 'Scoresheet URL']);
+
+  LEVEL_SHEET_IDS.forEach(function (entry) {
+    rows.push(['', '', '', entry[0], SHEET_URL_PREFIX + entry[1], SCORESHEET_URL_PREFIX + entry[1]]);
+  });
+
+  return rows;
+}
 
 // Label in the Config tab -> field name in the JSON reply.
 const CONFIG_LABELS = {
@@ -110,12 +159,17 @@ function doGet(e) {
 function resetConfigSheet() {
   const ss = SpreadsheetApp.openById(DEFAULT_SHEET_ID);
   const existing = ss.getSheetByName(SHEET_NAME_CONFIG);
+  // Only the layout is being reset, so the file stays the level it already was - otherwise
+  // resetting a Creator file would quietly reseed it as Explorer, URL directory and all.
+  const levelTitle = existing ? SCORE_LEVEL_TITLES[readConfig_(ss).level] : '';
+
   if (existing) ss.deleteSheet(existing);
-  createConfigSheet_(ss);
+  createConfigSheet_(ss, levelTitle);
 }
 
 function readConfig_(ss) {
-  const sheet = ss.getSheetByName(SHEET_NAME_CONFIG) || createConfigSheet_(ss);
+  // A file with no Config tab has no level to preserve, so it is seeded as Explorer.
+  const sheet = ss.getSheetByName(SHEET_NAME_CONFIG) || createConfigSheet_(ss, '');
   const data = sheet.getDataRange().getValues();
   const tz = ss.getSpreadsheetTimeZone();
 
@@ -194,23 +248,32 @@ function formatConfigValue_(cell, field, tz) {
   return String(cell).trim();
 }
 
-function createConfigSheet_(ss) {
+function createConfigSheet_(ss, levelTitle) {
+  const level = SCORE_LEVEL_TITLES[String(levelTitle || '').toLowerCase()] || 'Explorer';
+  const template = buildConfigTemplate_(level, ss.getId());
+  const rows = template.length;
+  const cols = template[0].length;
+
   const sheet = ss.insertSheet(SHEET_NAME_CONFIG);
-  const rows = CONFIG_TEMPLATE.length;
-  const cols = CONFIG_TEMPLATE[0].length;
 
   // Plain text on the value column, set before writing: otherwise Sheets turns dates and
-  // times into values and reformats them to whatever the locale prefers.
-  sheet.getRange(1, 5, rows, 1).setNumberFormat('@');
-  sheet.getRange(1, 1, rows, cols).setValues(CONFIG_TEMPLATE);
+  // times into values and reformats them to whatever the locale prefers. Only the config
+  // block needs it - the link rows below are left alone so Sheets can still linkify them.
+  sheet.getRange(1, 5, CONFIG_BLOCK_ROWS, 1).setNumberFormat('@');
+  sheet.getRange(1, 1, rows, cols).setValues(template);
 
-  sheet.getRange('A1:B1').setFontWeight('bold');
+  // Every label lives in column D; Level and the Judge / Team headers are the exceptions.
   sheet.getRange(1, 4, rows, 1).setFontWeight('bold');
-  sheet.setColumnWidth(1, 140);
-  sheet.setColumnWidth(2, 170);
+  sheet.getRange('A1').setFontWeight('bold');
+  sheet.getRange('A4:B4').setFontWeight('bold');
+  if (rows > CONFIG_BLOCK_ROWS) sheet.getRange('E12:F12').setFontWeight('bold');
+
+  sheet.setColumnWidth(1, 150);
+  sheet.setColumnWidth(2, 180);
   sheet.setColumnWidth(3, 24);
   sheet.setColumnWidth(4, 150);
-  sheet.setColumnWidth(5, 190);
+  sheet.setColumnWidth(5, 430);
+  sheet.setColumnWidth(6, 430);
 
   return sheet;
 }
