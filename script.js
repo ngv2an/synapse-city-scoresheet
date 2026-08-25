@@ -899,25 +899,30 @@ const SynapseScoresheet = (() => {
   }
 
   /**
-   * The clock picks one of the two fixed rounds, and End Time closes the schedule. Start
-   * times are placed on the competition date, so opening the page the day before still
-   * reads "Start at ..." rather than jumping to the last round.
+   * Config gives times of day, not instants. Placing them on the competition date is what
+   * lets a page opened the day before read "Start at ..." instead of jumping to the last
+   * round. The badge and the schedule share this so the two can never disagree.
    */
+  function getScheduleMidnight_(now) {
+    const date = parseConfigDate(competitionInfo.competitionDate);
+    return date
+      ? new Date(date[0], date[1], date[2]).getTime()
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  }
+
+  /** The clock picks one of the two fixed rounds, and End Time closes the schedule. */
   function resolveRound(now) {
     const schedule = getConfiguredSchedule();
     if (!schedule.valid) return null;
 
-    const date = parseConfigDate(competitionInfo.competitionDate);
-    const midnight = date
-      ? new Date(date[0], date[1], date[2])
-      : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const midnight = getScheduleMidnight_(now);
 
-    const ended = now.getTime() >= midnight.getTime() + schedule.endSeconds * 1000;
+    const ended = now.getTime() >= midnight + schedule.endSeconds * 1000;
     if (ended) return { current: null, first: schedule.round1, ended: true };
 
     let current = null;
     schedule.rounds.forEach((r) => {
-      if (now.getTime() >= midnight.getTime() + r.seconds * 1000) current = r;
+      if (now.getTime() >= midnight + r.seconds * 1000) current = r;
     });
 
     return { current: current, first: schedule.round1, ended: false };
@@ -954,19 +959,57 @@ const SynapseScoresheet = (() => {
       .join(':');
   }
 
-  function renderTimetable_() {
-    const modal = document.getElementById('timetable-modal');
-    if (!modal || modal.hidden) return;
-
+  /** The three fixed milestones, in the order they happen. */
+  function getScheduleMilestones_() {
     const rounds = Array.isArray(competitionInfo.rounds) ? competitionInfo.rounds : [];
     const round1 = rounds.find((item) => Number(item.round) === 1);
     const round2 = rounds.find((item) => Number(item.round) === 2);
 
+    return [
+      { label: 'Round 1', time: round1 && round1.time },
+      { label: 'Round 2', time: round2 && round2.time },
+      { label: 'End', time: competitionInfo.endTime }
+    ];
+  }
+
+  function timetableRow_(label, value, stateClass) {
+    return '<tr class="timetable-row' + (stateClass ? ' ' + stateClass : '') + '">'
+      + '<th scope="row">' + escapeHtml(label) + '</th>'
+      + '<td>' + escapeHtml(value || '-') + '</td></tr>';
+  }
+
+  /**
+   * Rebuilt whole on every tick rather than patched cell by cell, because Current Time is
+   * a row of its own that slides down the list as milestones pass - the schedule then
+   * reads top to bottom as a timeline, with everything above it behind and below ahead.
+   */
+  function renderTimetable_() {
+    const modal = document.getElementById('timetable-modal');
+    const body = document.getElementById('timetable-body');
+    if (!modal || modal.hidden || !body) return;
+
+    const now = new Date();
     setTimetableValue_('timetable-date', competitionInfo.competitionDate);
-    setTimetableValue_('timetable-current-time', formatCurrentTime_(new Date()));
-    setTimetableValue_('timetable-round-1', round1 && round1.time);
-    setTimetableValue_('timetable-round-2', round2 && round2.time);
-    setTimetableValue_('timetable-end', competitionInfo.endTime);
+
+    const milestones = getScheduleMilestones_();
+    // Only a complete, in-order schedule can say what is behind, running, or still ahead.
+    const ordered = getConfiguredSchedule().valid;
+    const midnight = getScheduleMidnight_(now);
+    const passed = ordered
+      ? milestones.filter((item) => now.getTime() >= midnight + parseConfigTime(item.time) * 1000).length
+      : 0;
+    const finished = ordered && passed >= milestones.length;
+
+    const rows = milestones.map((item, index) => {
+      if (!ordered) return timetableRow_(item.label, item.time, '');
+      // End is a boundary, never a round in progress, so it goes straight from ahead to behind.
+      if (finished || index < passed - 1) return timetableRow_(item.label, item.time, 'is-done');
+      if (index === passed - 1) return timetableRow_(item.label, item.time, 'is-active');
+      return timetableRow_(item.label, item.time, 'is-upcoming');
+    });
+
+    rows.splice(passed, 0, timetableRow_('Current Time', formatCurrentTime_(now), 'is-now'));
+    body.innerHTML = rows.join('');
   }
 
   function openTimetable_() {

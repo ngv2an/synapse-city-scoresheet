@@ -204,6 +204,8 @@ body {
 .meta-round,
 .meta-level {
   padding: 5px 10px;
+  /* Level carries the same ring in transparent, so the two pills stay the same height. */
+  border: 1.5px solid transparent;
   border-radius: 999px;
   background: #eff6ff;
   color: #1e40af;
@@ -219,7 +221,7 @@ body {
 
 .meta-round {
   grid-column: 2;
-  border: 0;
+  border-color: #93c5fd;
   font-family: inherit;
   cursor: pointer;
   touch-action: manipulation;
@@ -237,11 +239,13 @@ body {
 /* Waiting for the first round reads differently from being in one. */
 .meta-round.is-pending {
   background: #fffbeb;
+  border-color: #fcd34d;
   color: #b45309;
 }
 
 .meta-round.is-ended {
   background: #fef2f2;
+  border-color: #fca5a5;
   color: #b91c1c;
 }
 
@@ -935,8 +939,23 @@ body.timetable-modal-open {
   width: min(100%, 340px);
 }
 
+.timetable-dialog .history-dialog-header h2 {
+  /* Balances the 36px close button and its 12px gap, so the title sits in the middle. */
+  flex: 1;
+  margin-left: 48px;
+  text-align: center;
+}
+
 .timetable-content {
   padding: 12px;
+}
+
+.timetable-date {
+  margin: 0 0 10px;
+  color: #1f2b38;
+  font-size: 15px;
+  font-weight: 900;
+  text-align: center;
 }
 
 .timetable-table {
@@ -970,6 +989,31 @@ body.timetable-modal-open {
   font-weight: 900;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Where the clock stands, and where each milestone stands relative to it. */
+.timetable-row.is-upcoming th,
+.timetable-row.is-upcoming td {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.timetable-row.is-active th,
+.timetable-row.is-active td {
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.timetable-row.is-done th,
+.timetable-row.is-done td {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.timetable-row.is-now th,
+.timetable-row.is-now td {
+  background: #ecfdf5;
+  color: #047857;
 }
 
 .history-detail-content {

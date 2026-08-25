@@ -176,19 +176,15 @@
       <section class="history-dialog timetable-dialog" role="dialog" aria-modal="true"
                aria-labelledby="timetable-title">
         <header class="history-dialog-header">
-          <h2 id="timetable-title">Time Table</h2>
+          <h2 id="timetable-title">Schedule</h2>
           <button type="button" class="history-close" id="timetable-close"
-                  aria-label="Close time table">&times;</button>
+                  aria-label="Close schedule">&times;</button>
         </header>
         <div class="timetable-content">
+          <p class="timetable-date" id="timetable-date">-</p>
           <table class="timetable-table">
-            <tbody>
-              <tr><th scope="row">Date</th><td id="timetable-date">-</td></tr>
-              <tr><th scope="row">Current Time</th><td id="timetable-current-time">-</td></tr>
-              <tr><th scope="row">Round 1</th><td id="timetable-round-1">-</td></tr>
-              <tr><th scope="row">Round 2</th><td id="timetable-round-2">-</td></tr>
-              <tr><th scope="row">End</th><td id="timetable-end">-</td></tr>
-            </tbody>
+            <!-- Rebuilt on every tick: Current Time is a row that moves down as milestones pass. -->
+            <tbody id="timetable-body"></tbody>
           </table>
         </div>
       </section>
