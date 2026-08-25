@@ -55,16 +55,14 @@
       <div class="entry-row entry-row-try">
           <span class="entry-label">Try</span>
           <div class="try-control">
-            <!-- The box comes first and stays open: any count can be typed without
-                 hunting for a way out of the four shortcuts. -->
-            <input type="text" id="try-input" class="try-input" inputmode="numeric" pattern="[0-9]*"
-                   maxlength="2" placeholder="x" aria-label="Try count" autocomplete="off">
             <div class="try-options" id="try-options" role="group" aria-label="Common try counts">
               <button type="button" class="try-btn active" data-try="0" aria-pressed="true">0</button>
               <button type="button" class="try-btn" data-try="1" aria-pressed="false">1</button>
               <button type="button" class="try-btn" data-try="2" aria-pressed="false">2</button>
               <button type="button" class="try-btn" data-try="3" aria-pressed="false">3</button>
             </div>
+            <input type="text" id="try-input" class="try-input" inputmode="numeric" pattern="[0-9]*"
+                   maxlength="2" placeholder="n" aria-label="Try count above 3" autocomplete="off">
           </div>
       </div>
 

@@ -211,7 +211,7 @@ body {
   display: none;
 }
 
-/* Try: a number box, then the four common answers as one-tap shortcuts */
+/* Try: four common one-tap answers, followed by a box for counts above 3. */
 .try-control {
   display: flex;
   align-items: center;
@@ -224,6 +224,16 @@ body {
   width: 46px;
   min-width: 0;
   text-align: center;
+}
+
+.try-input.active {
+  border-color: #007bff;
+  background: #007bff;
+  color: #ffffff;
+}
+
+.try-input.active::placeholder {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .try-options {

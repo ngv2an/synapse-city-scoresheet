@@ -650,14 +650,17 @@ const SynapseScoresheet = (() => {
 
   function renderTryButtons() {
     const group = document.getElementById('try-options');
-    if (!group) return;
-
     const lit = tryMatchesButton();
-    group.querySelectorAll('.try-btn').forEach((btn) => {
-      const active = lit && btn.getAttribute('data-try') === String(tryValue);
-      btn.classList.toggle('active', active);
-      btn.setAttribute('aria-pressed', String(active));
-    });
+    if (group) {
+      group.querySelectorAll('.try-btn').forEach((btn) => {
+        const active = lit && btn.getAttribute('data-try') === String(tryValue);
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', String(active));
+      });
+    }
+
+    const input = document.getElementById('try-input');
+    if (input) input.classList.toggle('active', tryUsesTextInput());
   }
 
   function getTypedTry() {
@@ -672,6 +675,12 @@ const SynapseScoresheet = (() => {
 
     const n = Number(typed);
     return Number.isInteger(n) && n >= 0 && n <= 3;
+  }
+
+  function tryUsesTextInput() {
+    const typed = getTypedTry();
+    if (!/^\d{1,2}$/.test(typed)) return false;
+    return Number(typed) > 3;
   }
 
   /** Typing 0-3 is the same answer as tapping that button, so the two never drift apart. */
