@@ -43,7 +43,7 @@ const SCORE_LEVEL_TITLES = {
  */
 const HEADERS_SCORES = [
   'Submission Time', 'Device ID', 'Level', 'Judge', 'Team', 'Round', 'Score', 'Time', 'Try',
-  'Green', 'Blue', 'Purple', 'Mystery', 'Red', 'Yellow 1', 'Yellow 2', 'Leanbot 1', 'Leanbot 2',
+  '', 'Green', 'Blue', 'Purple', 'Mystery', 'Red', 'Yellow 1', 'Yellow 2', 'Leanbot 1', 'Leanbot 2',
   'Photo URL', 'Submission ID', 'User Agent'
 ];
 
@@ -255,6 +255,7 @@ function doPost(e) {
       Number(body.totalScore) || 0,
       body.missionTime || '',
       body.tryCount !== undefined && body.tryCount !== '' ? Number(body.tryCount) : '',
+      '',
       s.green || '',
       s.blue || '',
       s.purple || '',
@@ -346,8 +347,8 @@ function ensureScoreSheet_(ss, levelTitle) {
 }
 
 /**
- * Upgrades the old Scores layout by inserting Level before Judge. Existing rows are filled
- * with this file's current level, while all later submissions write their level directly.
+ * Upgrades the old Scores layout by inserting Level before Judge and a blank separator
+ * between Try and Green. Existing rows keep their data aligned during both migrations.
  */
 function ensureScoreSheetSchema_(sheet, levelTitle) {
   if (sheet.getLastRow() === 0) {
@@ -371,6 +372,19 @@ function ensureScoreSheetSchema_(sheet, levelTitle) {
   } else if (thirdHeader !== 'Level') {
     throw new Error(
       'Unexpected Scores layout: cell C1 must be "Level" (new) or "Judge" (old).'
+    );
+  }
+
+  // After the Level migration, Try is column I. Older layouts put Green immediately in J;
+  // insert a blank J so the mission columns begin at K without shifting row values apart.
+  const headerAfterTry = String(sheet.getRange(1, 10).getValue() || '').trim();
+  const followingHeader = String(sheet.getRange(1, 11).getValue() || '').trim();
+
+  if (headerAfterTry === 'Green') {
+    sheet.insertColumnBefore(10);
+  } else if (headerAfterTry !== '' || followingHeader !== 'Green') {
+    throw new Error(
+      'Unexpected Scores layout: the column after Try must be blank and followed by Green.'
     );
   }
 
