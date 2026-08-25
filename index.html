@@ -33,10 +33,11 @@
       <div class="competition-banner" id="competition-banner"></div>
       <div class="meta-date" id="meta-date"></div>
 
-      <!-- Level and Round are both read from Config / device time and are not selectable. -->
+      <!-- Level is read from Config; Round follows device time and opens the timetable. -->
       <div class="competition-meta" id="competition-meta">
         <span class="meta-level" id="meta-level"></span>
-        <span class="meta-round" id="meta-round"></span>
+        <button type="button" class="meta-round" id="meta-round" aria-haspopup="dialog"
+                aria-controls="timetable-modal" aria-expanded="false"></button>
       </div>
 
       <select id="judge-select" class="competition-judge" aria-label="Judge">
@@ -169,6 +170,28 @@
         </table>
       </div>
     </section>
+
+    <div class="history-modal timetable-modal" id="timetable-modal" hidden>
+      <section class="history-dialog timetable-dialog" role="dialog" aria-modal="true"
+               aria-labelledby="timetable-title">
+        <header class="history-dialog-header">
+          <h2 id="timetable-title">Time Table</h2>
+          <button type="button" class="history-close" id="timetable-close"
+                  aria-label="Close time table">&times;</button>
+        </header>
+        <div class="timetable-content">
+          <table class="timetable-table">
+            <tbody>
+              <tr><th scope="row">Date</th><td id="timetable-date">-</td></tr>
+              <tr><th scope="row">Current Time</th><td id="timetable-current-time">-</td></tr>
+              <tr><th scope="row">Round 1</th><td id="timetable-round-1">-</td></tr>
+              <tr><th scope="row">Round 2</th><td id="timetable-round-2">-</td></tr>
+              <tr><th scope="row">End</th><td id="timetable-end">-</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
 
     <div class="history-modal" id="history-modal" hidden>
       <section class="history-dialog" role="dialog" aria-modal="true" aria-labelledby="history-dialog-title">

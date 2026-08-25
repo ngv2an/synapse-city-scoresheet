@@ -188,11 +188,11 @@ body {
   width: 100%;
 }
 
-.competition-meta > span:empty {
+.competition-meta > :empty {
   display: none;
 }
 
-.competition-meta > span {
+.competition-meta > * {
   justify-self: center;
   text-align: center;
 }
@@ -215,6 +215,19 @@ body {
 
 .meta-round {
   grid-column: 2;
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.meta-round:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.meta-round:active {
+  transform: scale(0.96);
 }
 
 /* Waiting for the first round reads differently from being in one. */
@@ -840,7 +853,8 @@ body {
   background: #fffbeb;
 }
 
-body.history-modal-open {
+body.history-modal-open,
+body.timetable-modal-open {
   overflow: hidden;
 }
 
@@ -903,6 +917,47 @@ body.history-modal-open {
 
 .history-close:active {
   background: #e2e8f0;
+}
+
+.timetable-dialog {
+  width: min(100%, 340px);
+}
+
+.timetable-content {
+  padding: 12px;
+}
+
+.timetable-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.timetable-table th,
+.timetable-table td {
+  width: 50%;
+  padding: 11px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.timetable-table tr:last-child th,
+.timetable-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.timetable-table th {
+  color: #64748b;
+  font-weight: 800;
+  text-align: left;
+}
+
+.timetable-table td {
+  color: #1e40af;
+  font-weight: 900;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .history-detail-content {

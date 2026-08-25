@@ -77,6 +77,8 @@ const SynapseScoresheet = (() => {
   let restoredTeam = '';
   let historyCleanupTicker = null;
   let historyLastFocus = null;
+  let timetableTicker = null;
+  let timetableLastFocus = null;
 
   function escapeHtml(str) {
     return String(str)
@@ -873,6 +875,64 @@ const SynapseScoresheet = (() => {
     el.classList.toggle('is-ended', state.ended);
   }
 
+  function setTimetableValue_(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value || '-';
+  }
+
+  function formatCurrentTime_(now) {
+    return [now.getHours(), now.getMinutes(), now.getSeconds()]
+      .map((value) => String(value).padStart(2, '0'))
+      .join(':');
+  }
+
+  function renderTimetable_() {
+    const modal = document.getElementById('timetable-modal');
+    if (!modal || modal.hidden) return;
+
+    const rounds = Array.isArray(competitionInfo.rounds) ? competitionInfo.rounds : [];
+    const round1 = rounds.find((item) => Number(item.round) === 1);
+    const round2 = rounds.find((item) => Number(item.round) === 2);
+
+    setTimetableValue_('timetable-date', competitionInfo.competitionDate);
+    setTimetableValue_('timetable-current-time', formatCurrentTime_(new Date()));
+    setTimetableValue_('timetable-round-1', round1 && round1.time);
+    setTimetableValue_('timetable-round-2', round2 && round2.time);
+    setTimetableValue_('timetable-end', competitionInfo.endTime);
+  }
+
+  function openTimetable_() {
+    const modal = document.getElementById('timetable-modal');
+    const trigger = document.getElementById('meta-round');
+    if (!modal) return;
+
+    timetableLastFocus = document.activeElement;
+    modal.hidden = false;
+    document.body.classList.add('timetable-modal-open');
+    if (trigger) trigger.setAttribute('aria-expanded', 'true');
+    renderTimetable_();
+
+    if (!timetableTicker) timetableTicker = setInterval(renderTimetable_, 1000);
+    const close = document.getElementById('timetable-close');
+    if (close) close.focus();
+  }
+
+  function closeTimetable_() {
+    const modal = document.getElementById('timetable-modal');
+    if (!modal || modal.hidden) return;
+
+    modal.hidden = true;
+    document.body.classList.remove('timetable-modal-open');
+    const trigger = document.getElementById('meta-round');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    if (timetableTicker) {
+      clearInterval(timetableTicker);
+      timetableTicker = null;
+    }
+    if (timetableLastFocus && typeof timetableLastFocus.focus === 'function') timetableLastFocus.focus();
+    timetableLastFocus = null;
+  }
+
   function isCompetitionDate(now, expected) {
     return now.getFullYear() === expected[0]
       && now.getMonth() === expected[1]
@@ -905,6 +965,7 @@ const SynapseScoresheet = (() => {
   function renderClock() {
     renderRound();
     renderDateWarning();
+    renderTimetable_();
   }
 
   function renderLevel() {
@@ -1344,6 +1405,19 @@ const SynapseScoresheet = (() => {
       });
     }
 
+    const timetableTrigger = document.getElementById('meta-round');
+    if (timetableTrigger) timetableTrigger.addEventListener('click', openTimetable_);
+
+    const timetableClose = document.getElementById('timetable-close');
+    if (timetableClose) timetableClose.addEventListener('click', closeTimetable_);
+
+    const timetableModal = document.getElementById('timetable-modal');
+    if (timetableModal) {
+      timetableModal.addEventListener('click', (e) => {
+        if (e.target === timetableModal) closeTimetable_();
+      });
+    }
+
     window.addEventListener('online', () => flushQueue(false));
 
     // A phone that sat locked through the break comes back showing the round it left on.
@@ -1352,7 +1426,10 @@ const SynapseScoresheet = (() => {
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeSubmissionHistory_();
+      if (e.key === 'Escape') {
+        closeSubmissionHistory_();
+        closeTimetable_();
+      }
     });
   }
 
