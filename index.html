@@ -16,37 +16,27 @@
       Loading Config...
     </div>
 
-    <!-- Competition and run information, one item per row -->
-    <section class="entry-panel">
-      <div class="entry-row entry-row-static">
-        <span class="entry-label">Competition Name</span>
-        <span class="entry-static-value competition-banner" id="competition-banner"></span>
+    <!-- General competition information, centered and without visible labels. -->
+    <section class="competition-panel">
+      <div class="competition-banner" id="competition-banner"></div>
+      <div class="meta-date" id="meta-date"></div>
+
+      <!-- Level and Round are both read from Config / device time and are not selectable. -->
+      <div class="competition-meta" id="competition-meta">
+        <span class="meta-level" id="meta-level"></span>
+        <span class="meta-round" id="meta-round"></span>
       </div>
 
-      <div class="entry-row entry-row-static">
-        <span class="entry-label">Competition Date</span>
-        <span class="entry-static-value meta-date" id="meta-date"></span>
-      </div>
+      <select id="judge-select" class="competition-judge" aria-label="Judge">
+        <option value="">-- Select Judge --</option>
+      </select>
 
       <!-- Shown only when the device clock disagrees with the Config tab -->
       <div class="date-warning" id="date-warning" role="alert"></div>
+    </section>
 
-      <label class="entry-row">
-          <span class="entry-label">Judge</span>
-          <select id="judge-select" class="entry-select">
-            <option value="">-- Select Judge --</option>
-          </select>
-      </label>
-
-      <!-- Level and Round are both read from Config / device time and are not selectable. -->
-      <div class="entry-row entry-row-static">
-        <span class="entry-label">Level</span>
-        <div class="entry-static-value competition-meta" id="competition-meta">
-          <span class="meta-level" id="meta-level"></span>
-          <span class="meta-round" id="meta-round"></span>
-        </div>
-      </div>
-
+    <!-- Team and run-specific inputs remain in their own panel. -->
+    <section class="entry-panel run-entry-panel">
       <label class="entry-row">
           <span class="entry-label">Team</span>
           <select id="team-select" class="entry-select">

@@ -55,7 +55,7 @@ body {
 /* One compact vertical panel: every requested item owns one full row. */
 .entry-panel {
   width: 100%;
-  margin-top: 8px;
+  margin-top: 0;
   overflow: hidden;
   border: 1px solid #cfd7e2;
   border-radius: 8px;
@@ -98,14 +98,48 @@ body {
   white-space: nowrap;
 }
 
+.competition-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 16px 12px;
+  overflow: hidden;
+  border: 1px solid #cfd7e2;
+  border-radius: 8px;
+  background: #ffffff;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(21, 33, 47, 0.08);
+}
+
 .competition-banner {
-  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  color: #1e40af;
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta-date {
+  color: #475569;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
 }
 
 .competition-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .competition-meta > span:empty {
@@ -114,37 +148,57 @@ body {
 
 .meta-round,
 .meta-level {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #eff6ff;
   color: #1e40af;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.2;
 }
 
 .meta-level {
   text-transform: capitalize;
 }
 
-.meta-round:not(:empty)::before {
-  content: '-';
-  margin-right: 6px;
-  color: #94a3b8;
-}
-
-.meta-level:empty + .meta-round::before {
-  content: none;
-}
-
 /* Waiting for the first round reads differently from being in one. */
 .meta-round.is-pending {
+  background: #fffbeb;
   color: #b45309;
 }
 
 .meta-round.is-ended {
+  background: #fef2f2;
   color: #b91c1c;
+}
+
+.competition-judge {
+  width: min(100%, 320px);
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid #cfd7e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2b38;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.competition-judge:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.18);
 }
 
 /* Device clock does not match the competition date */
 .date-warning {
+  width: 100%;
   text-align: center;
   padding: 6px 8px;
-  border-bottom: 1px solid #fecaca;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
   background: #fee2e2;
   color: #b91c1c;
   font-size: clamp(10px, 2.6vw, 12px);
