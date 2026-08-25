@@ -40,9 +40,13 @@
                 aria-controls="timetable-modal" aria-expanded="false"></button>
       </div>
 
-      <select id="judge-select" class="competition-judge" aria-label="Judge">
-        <option value="">-- Select Judge --</option>
-      </select>
+      <!-- Judge and its Config refresh share one row, half the width each. -->
+      <div class="competition-actions">
+        <select id="judge-select" class="competition-judge" aria-label="Judge">
+          <option value="">-- Select Judge --</option>
+        </select>
+        <button type="button" class="btn-reload-config" id="btn-reload-config">Reload Config</button>
+      </div>
 
       <!-- Shown only when the device clock disagrees with the Config tab -->
       <div class="date-warning" id="date-warning" role="alert"></div>

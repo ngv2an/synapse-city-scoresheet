@@ -47,6 +47,7 @@ const SynapseScoresheet = (() => {
 
   const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
   const DRAFT_KEY_PREFIX = 'scoresheet.draft.';
+  const CONFIG_KEY_PREFIX = 'scoresheet.config.';
   const HISTORY_KEY_PREFIX = 'scoresheet.history.';
   const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
   // The Sheet gets the full photo; history keeps a smaller copy so a day of runs fits
@@ -124,6 +125,29 @@ const SynapseScoresheet = (() => {
 
   function getDraftKey() {
     return DRAFT_KEY_PREFIX + getActiveSheetId();
+  }
+
+  function getConfigKey() {
+    return CONFIG_KEY_PREFIX + getActiveSheetId();
+  }
+
+  /** The last good Config answer for this Sheet, or null when there has never been one. */
+  function readCachedConfig_() {
+    try {
+      const raw = localStorage.getItem(getConfigKey());
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed && parsed.ok ? parsed : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeCachedConfig_(data) {
+    try {
+      localStorage.setItem(getConfigKey(), JSON.stringify(data));
+    } catch (err) {
+      console.warn('Could not cache Config:', err);
+    }
   }
 
   function getHistoryKey() {
@@ -833,7 +857,14 @@ const SynapseScoresheet = (() => {
     if (modal) modal.hidden = !isSubmitting;
   }
 
-  async function loadMetadata() {
+  /**
+   * Judges, teams, level and schedule are set before the competition and do not move during
+   * it, so the first answer is kept and every later page load reads it off the device. That
+   * is one request per device per competition instead of one per reload, and it is also
+   * what lets a phone that lost signal still open the scoresheet. Reload Config is the one
+   * thing that goes back to the Sheet, and the judge decides when the copy is stale.
+   */
+  async function loadMetadata(force) {
     const sheetId = getActiveSheetId();
 
     // Update View Submission link
@@ -842,16 +873,29 @@ const SynapseScoresheet = (() => {
       viewLink.href = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
     }
 
-    // Only reveal the scoresheet after a fresh Config response from this Sheet.
+    if (!force) {
+      const cached = readCachedConfig_();
+      if (cached) {
+        applyMetadata(cached);
+        setConfigLoadingState('', null);
+        return true;
+      }
+    }
+
     try {
       const data = await SheetSubmit.fetchMetadata(sheetId);
       if (!data || !data.ok) throw new Error(data && data.error ? data.error : 'Invalid Config response');
 
+      writeCachedConfig_(data);
       applyMetadata(data);
       setConfigLoadingState('', null);
+      return true;
     } catch (err) {
       console.warn('Could not fetch sheet metadata:', err);
-      setConfigLoadingState('Could not load Config. Please reload.', 'error');
+      // A failed reload leaves the Config already on screen alone. Only a cold start with
+      // nothing to show has to stay behind the loading card.
+      if (!force) setConfigLoadingState('Could not load Config. Please reload.', 'error');
+      return false;
     }
   }
 
@@ -1379,6 +1423,28 @@ const SynapseScoresheet = (() => {
           handleLeanbotRowClick(botId, 'crl');
           return;
         }
+      });
+    }
+
+    // Reload Config: the button carries its own state, so the scoresheet stays usable
+    // while the request is out and stays on screen if it fails.
+    const btnReloadConfig = document.getElementById('btn-reload-config');
+    if (btnReloadConfig) {
+      btnReloadConfig.addEventListener('click', async () => {
+        btnReloadConfig.disabled = true;
+        btnReloadConfig.textContent = 'Loading…';
+
+        const loaded = await loadMetadata(true);
+
+        btnReloadConfig.disabled = false;
+        btnReloadConfig.textContent = loaded ? 'Reload Config' : 'Reload failed';
+        if (loaded) return;
+
+        setTimeout(() => {
+          if (btnReloadConfig.textContent === 'Reload failed') {
+            btnReloadConfig.textContent = 'Reload Config';
+          }
+        }, 3000);
       });
     }
 
