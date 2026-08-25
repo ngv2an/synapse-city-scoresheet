@@ -50,9 +50,16 @@ const HEADERS_SCORES = [
 
 /**
  * Column order of the system Logs tab for monitoring performance and usage.
+ *
+ * Total is what the judge waited. It splits into Wait, the time this run spent queued
+ * behind other runs on the script lock, and Work, the time it held the lock itself. Only
+ * Work says how many runs a minute the deployment can take; Total mixes in the queue and
+ * would read worse the busier things get, which is the opposite of what it has to measure.
  */
 const HEADERS_LOGS = [
-  'Timestamp', 'Action', 'Level', 'Judge', 'Team', 'Duration (s)', 'Photo Size (KB)', 'Status', 'Submission ID', 'Error / Notes'
+  'Timestamp', 'Action', 'Level', 'Judge', 'Team',
+  'Total (s)', 'Wait (s)', 'Work (s)', 'Photo Size (KB)',
+  'Status', 'Submission ID', 'Error / Notes'
 ];
 
 /**
@@ -197,14 +204,33 @@ const CONFIG_TEAM_HEADERS = ['team', 'teams', 'team id', 'team name'];
  * competition name, date, two round times, end time, level, and the Judge / Team lists.
  */
 function doGet(e) {
+  const startTime = Date.now();
+  let ss = null;
+
   try {
     const sheetId = resolveSheetId_(e && e.parameter ? (e.parameter.sheetId || e.parameter.link) : '');
-    const ss = SpreadsheetApp.openById(sheetId);
+    ss = SpreadsheetApp.openById(sheetId);
     const config = readConfig_(ss);
+
+    // Config reads take no lock, so all of it is work.
+    logActivity_(ss, {
+      action: 'Config',
+      level: SCORE_LEVEL_TITLES[config.level] || config.level,
+      total: secondsSince_(startTime),
+      status: 'OK'
+    });
 
     return json(Object.assign({ ok: true, sheetId: sheetId }, config));
 
   } catch (err) {
+    if (ss) {
+      logActivity_(ss, {
+        action: 'Config',
+        total: secondsSince_(startTime),
+        status: 'ERROR',
+        error: String(err)
+      });
+    }
     return json({ ok: false, error: String(err) });
   }
 }
@@ -391,6 +417,10 @@ function doPost(e) {
   let id = '';
   let photoSizeKb = 0;
   let levelTitle = '';
+  let waitStart = 0;
+  let lockedAt = 0;
+  // Filled in on the way out and written once the lock is back, never while holding it.
+  let pending = null;
 
   try {
     body = JSON.parse(e.postData.contents);
@@ -400,20 +430,35 @@ function doPost(e) {
 
     id = String(body.submissionId || Utilities.getUuid());
 
+    // Opened before the cache check so a duplicate has somewhere to be recorded. A retry
+    // is a real execution against the quota, and its rate is the first sign of a bad link.
+    const sheetId = resolveSheetId_(body.sheetId || body.link);
+    targetSs = SpreadsheetApp.openById(sheetId);
+
     // Deduplication via cache
     const cache = CacheService.getScriptCache();
     const cachedRow = cache.get(id);
     if (cachedRow) {
+      pending = {
+        action: 'Submit',
+        judge: body.judge || '',
+        team: body.team || '',
+        total: secondsSince_(startTime),
+        status: 'DUPLICATE',
+        submissionId: id,
+        error: 'Answered from cache, row ' + cachedRow
+      };
       return json({ ok: true, duplicate: true, submissionId: id, row: Number(cachedRow) });
     }
 
-    const sheetId = resolveSheetId_(body.sheetId || body.link);
-    targetSs = SpreadsheetApp.openById(sheetId);
     photoSizeKb = body.photoBase64 ? Math.round(body.photoBase64.length * 0.75 / 1024) : 0;
     const photoUrl = body.photoBase64 ? savePhoto_(id, body.photoBase64) : '';
 
     // Wait for lock to append row safely
+    waitStart = Date.now();
     lock.waitLock(30000);
+    lockedAt = Date.now();
+
     const sheet = prepareScoreSheet_(targetSs);
     levelTitle = sheet.getName().slice(SCORE_SHEET_PREFIX.length);
     const s = body.scores || {};
@@ -449,39 +494,44 @@ function doPost(e) {
     sheet.getRange(row, 1).setNumberFormat(SUBMISSION_TIME_FORMAT);
     cache.put(id, String(row), 21600); // 6 hours
 
-    // Record system performance log
-    const duration = Number(((Date.now() - startTime) / 1000).toFixed(2));
-    logActivity_(targetSs, {
+    pending = {
       action: 'Submit',
       level: levelTitle,
       judge: body.judge || '',
       team: body.team || '',
-      duration: duration,
+      total: secondsSince_(startTime),
+      wait: secondsBetween_(waitStart, lockedAt),
+      work: secondsSince_(lockedAt),
       photoSizeKb: photoSizeKb,
       status: 'OK',
       submissionId: id
-    });
+    };
 
     return json({ ok: true, submissionId: id, row: row });
 
   } catch (err) {
-    if (targetSs) {
-      const duration = Number(((Date.now() - startTime) / 1000).toFixed(2));
-      logActivity_(targetSs, {
-        action: 'Submit',
-        level: levelTitle,
-        judge: body ? body.judge : '',
-        team: body ? body.team : '',
-        duration: duration,
-        photoSizeKb: photoSizeKb,
-        status: 'ERROR',
-        submissionId: id,
-        error: String(err)
-      });
-    }
+    pending = {
+      action: 'Submit',
+      level: levelTitle,
+      judge: body ? body.judge : '',
+      team: body ? body.team : '',
+      total: secondsSince_(startTime),
+      // A run that never got the lock has no work time, only the wait that timed out -
+      // which is exactly the number that explains a 30 second failure.
+      wait: waitStart ? secondsBetween_(waitStart, lockedAt || Date.now()) : '',
+      work: lockedAt ? secondsSince_(lockedAt) : '',
+      photoSizeKb: photoSizeKb,
+      status: 'ERROR',
+      submissionId: id,
+      error: String(err)
+    };
     return json({ ok: false, error: String(err) });
+
   } finally {
+    // Release first: bookkeeping for one run must not hold up the next. The lock is shared
+    // by every spreadsheet on this deployment, so anything left inside it costs everyone.
     lock.releaseLock();
+    if (targetSs && pending) logActivity_(targetSs, pending);
   }
 }
 
@@ -599,11 +649,6 @@ function prepareScoreSheet_(ss) {
   return sheet;
 }
 
-function getScoreSheet_(sheetId) {
-  const ss = SpreadsheetApp.openById(sheetId);
-  return prepareScoreSheet_(ss);
-}
-
 /**
  * Container-bound copies run these simple triggers automatically. Opening a copy or
  * editing its Config tab updates the Scores tab name after its Level changes.
@@ -665,30 +710,60 @@ function json(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function secondsBetween_(from, to) {
+  return Number(((to - from) / 1000).toFixed(2));
+}
+
+function secondsSince_(from) {
+  return secondsBetween_(from, Date.now());
+}
+
+/** A number the sheet can chart, or a blank cell when the step did not happen. */
+function logNumber_(value) {
+  return value === undefined || value === null || value === '' ? '' : Number(value);
+}
+
+/**
+ * Returns the Logs tab, creating it when missing. A tab left over from an older column
+ * order is renamed rather than appended to: the two orders cannot share one sheet, and
+ * charting a column that means two different things is worse than losing the old rows.
+ */
+function ensureLogSheet_(ss) {
+  let sheet = ss.getSheetByName(SHEET_NAME_LOGS);
+
+  if (sheet) {
+    const header = sheet.getRange(1, 1, 1, HEADERS_LOGS.length).getValues()[0].join('|');
+    if (header === HEADERS_LOGS.join('|')) return sheet;
+
+    const stamp = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd HHmm');
+    sheet.setName(SHEET_NAME_LOGS + ' (old ' + stamp + ')');
+  }
+
+  sheet = ss.insertSheet(SHEET_NAME_LOGS);
+  sheet.getRange(1, 1, 1, HEADERS_LOGS.length)
+    .setValues([HEADERS_LOGS])
+    .setFontWeight('bold');
+  sheet.setFrozenRows(1);
+
+  const widths = [160, 90, 100, 140, 160, 90, 90, 90, 130, 100, 220, 260];
+  widths.forEach(function (width, i) {
+    sheet.setColumnWidth(i + 1, width);
+  });
+
+  return sheet;
+}
+
 /**
  * Records system usage metrics into the Logs tab for live monitoring.
+ *
+ * Call this outside the script lock. It writes to the same file the run just wrote to, so
+ * holding the lock across it would add two writes to the one section every submit queues
+ * behind - and the durations it records would then be measuring its own cost.
  */
 function logActivity_(ss, entry) {
   try {
-    if (!ss) return;
-    let sheet = ss.getSheetByName(SHEET_NAME_LOGS);
-    if (!sheet) {
-      sheet = ss.insertSheet(SHEET_NAME_LOGS);
-      sheet.getRange(1, 1, 1, HEADERS_LOGS.length)
-        .setValues([HEADERS_LOGS])
-        .setFontWeight('bold');
-      sheet.setFrozenRows(1);
-      sheet.setColumnWidth(1, 160); // Timestamp
-      sheet.setColumnWidth(2, 90);  // Action
-      sheet.setColumnWidth(3, 100); // Level
-      sheet.setColumnWidth(4, 140); // Judge
-      sheet.setColumnWidth(5, 160); // Team
-      sheet.setColumnWidth(6, 110); // Duration (s)
-      sheet.setColumnWidth(7, 130); // Photo Size (KB)
-      sheet.setColumnWidth(8, 90);  // Status
-      sheet.setColumnWidth(9, 220); // Submission ID
-      sheet.setColumnWidth(10, 220); // Error / Notes
-    }
+    if (!ss || !entry) return;
+    const sheet = ensureLogSheet_(ss);
 
     sheet.appendRow([
       new Date(),
@@ -696,7 +771,9 @@ function logActivity_(ss, entry) {
       entry.level || '',
       entry.judge || '',
       entry.team || '',
-      entry.duration !== undefined ? Number(entry.duration) : '',
+      logNumber_(entry.total),
+      logNumber_(entry.wait),
+      logNumber_(entry.work),
       entry.photoSizeKb !== undefined ? Number(entry.photoSizeKb) : 0,
       entry.status || 'OK',
       entry.submissionId || '',
