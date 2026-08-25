@@ -287,6 +287,15 @@ const SynapseScoresheet = (() => {
       + ' ' + two(date.getHours()) + ':' + two(date.getMinutes()) + ':' + two(date.getSeconds());
   }
 
+  /** The list only ever holds the last 24 hours, so the row needs the clock, not the date. */
+  function formatHistoryClock_(timestamp) {
+    const date = new Date(Number(timestamp));
+    if (Number.isNaN(date.getTime())) return '';
+
+    const two = (value) => String(value).padStart(2, '0');
+    return two(date.getHours()) + ':' + two(date.getMinutes()) + ':' + two(date.getSeconds());
+  }
+
   function renderSubmissionHistory_() {
     const body = document.getElementById('history-body');
     const empty = document.getElementById('history-empty');
@@ -306,9 +315,9 @@ const SynapseScoresheet = (() => {
       return '<tr class="history-entry' + statusClass + '" data-history-id="'
         + escapeHtml(entry.id || '') + '" tabindex="0" role="button" aria-label="'
         + escapeHtml(label) + '">'
-        + '<td>' + escapeHtml(formatHistoryTimestamp_(entry.submittedAt)) + '</td>'
-        + '<td>' + escapeHtml(entry.team || '-') + '</td>'
+        + '<td>' + escapeHtml(formatHistoryClock_(entry.submittedAt)) + '</td>'
         + '<td>' + escapeHtml(round) + '</td>'
+        + '<td>' + escapeHtml(entry.team || '-') + '</td>'
         + '<td>' + escapeHtml(total) + '</td>'
         + '</tr>';
     }).join('');
