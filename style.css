@@ -30,7 +30,8 @@ body {
   display: none;
 }
 
-.config-loading {
+.config-loading,
+.submit-loading {
   position: fixed;
   inset: 0;
   z-index: 2000;
@@ -40,6 +41,10 @@ body {
   padding: 20px;
   background: rgba(231, 235, 239, 0.72);
   backdrop-filter: blur(1px);
+}
+
+.submit-loading[hidden] {
+  display: none;
 }
 
 .config-loading-card {

@@ -758,6 +758,11 @@ const SynapseScoresheet = (() => {
     status.className = 'config-loading' + (tone ? ' is-' + tone : '');
   }
 
+  function setSubmitLoadingState(isSubmitting) {
+    const modal = document.getElementById('submit-loading');
+    if (modal) modal.hidden = !isSubmitting;
+  }
+
   async function loadMetadata() {
     const sheetId = getActiveSheetId();
 
@@ -1103,6 +1108,7 @@ const SynapseScoresheet = (() => {
     btn.disabled = true;
     btn.textContent = 'Sending…';
     setSubmitStatus('', null);
+    setSubmitLoadingState(true);
 
     try {
       // Competition and level are read from Config by the server, rather than trusted from
@@ -1139,6 +1145,7 @@ const SynapseScoresheet = (() => {
       }
 
     } finally {
+      setSubmitLoadingState(false);
       btn.disabled = false;
       btn.textContent = 'Submit';
     }
