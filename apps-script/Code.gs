@@ -24,6 +24,10 @@ const LEGACY_SHEET_NAME_SCORES = 'Scores';
 const SCORE_SHEET_PREFIX = 'Scores - ';
 const SHEET_NAME_CONFIG = 'Config';
 const SHEET_NAME_LOGS = 'Logs';
+const SHEET_NAME_MONITOR = 'Monitor';
+// Photos are created one Drive file at a time, and file creation is the quota that could
+// bite. Storage is not: this counts files, not megabytes.
+const PHOTO_QUOTA_PER_DAY = 1500;
 const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
 const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C';
 const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
@@ -786,4 +790,124 @@ function logActivity_(ss, entry) {
     // Non-blocking: failure in logging must never disrupt normal scoring
     console.error('System log error:', err);
   }
+}
+
+/**
+ * Builds the Monitor tab: a read-only dashboard of formulas over the Logs tab.
+ *
+ * It lives in its own tab on purpose. ensureLogSheet_ compares row 1 of Logs against
+ * HEADERS_LOGS on every write, so anything inserted above those headers would make the
+ * check fail and rename the tab away on the very next request.
+ *
+ * Only the numbers that map to a limit that actually exists are here. There is no daily
+ * quota on web app executions, so nothing counts seconds against a budget; what does bind
+ * is Drive file creation, and how long each run holds the script lock.
+ */
+function buildMonitorSheet_(ss) {
+  const logs = SHEET_NAME_LOGS;
+  const today = 'Logs!A:A,">="&TODAY()';
+
+  // Row numbers are referenced by the derived formulas below, so this layout is fixed.
+  const rows = [
+    ['Monitor', '', 'Rebuild with buildMonitorSheets() after changing the Logs layout.'],
+    ['', '', ''],
+    ['TODAY', 'Value', 'Watch'],
+    ['Submissions', '=COUNTIFS(' + logs + '!B:B,"Submit",' + logs + '!J:J,"OK",' + today + ')',
+      'Runs that reached the sheet, retries excluded'],
+    ['Retries (duplicate)', '=COUNTIFS(' + logs + '!B:B,"Submit",' + logs + '!J:J,"DUPLICATE",' + today + ')',
+      'Extra executions from replies the client lost'],
+    ['Retry rate', '=IFERROR(B5/(B4+B5),0)', 'Over 10% - look at the venue network'],
+    ['Errors', '=COUNTIFS(' + logs + '!J:J,"ERROR",' + today + ')', 'Any row here is worth reading'],
+    ['', '', ''],
+    ['PHOTOS', '', ''],
+    ['Photos created', '=COUNTIFS(' + logs + '!I:I,">0",' + today + ')',
+      'Counts Drive files, not megabytes'],
+    ['Quota used', '=IFERROR(B10/' + PHOTO_QUOTA_PER_DAY + ',0)',
+      'Of ' + PHOTO_QUOTA_PER_DAY + '/day on Workspace; 250 on a consumer account'],
+    ['Upload size (MB)', '=ROUND(SUMIFS(' + logs + '!I:I,' + today + ')/1024,1)',
+      'Reference only - storage is not the limit'],
+    ['', '', ''],
+    ['THROUGHPUT', '', ''],
+    ['p95 Work (s)', '=IFERROR(PERCENTILE(FILTER(' + logs + '!H:H,' + logs + '!B:B="Submit",'
+      + logs + '!J:J="OK",' + logs + '!A:A>=TODAY()),0.95),0)',
+      'Time spent holding the script lock'],
+    ['Capacity (submits/min)', '=IFERROR(60/B15,0)', 'For the whole deployment, all four files'],
+    ['Burst headroom (judges)', '=IFERROR(INT(30/B15)+1,0)',
+      'Submitting at once before one hits the 30s lock timeout'],
+    ['Longest lock wait (s)', '=IFERROR(MAX(FILTER(' + logs + '!G:G,' + logs + '!A:A>=TODAY())),0)',
+      'Approaching 30 means the next judge gets refused']
+  ];
+
+  const existing = ss.getSheetByName(SHEET_NAME_MONITOR);
+  const index = existing ? existing.getIndex() : 0;
+  if (existing) ss.deleteSheet(existing);
+
+  const sheet = index > 0
+    ? ss.insertSheet(SHEET_NAME_MONITOR, index - 1)
+    : ss.insertSheet(SHEET_NAME_MONITOR);
+
+  sheet.getRange(1, 1, rows.length, 3).setValues(rows);
+
+  sheet.getRange('A1').setFontWeight('bold').setFontSize(13);
+  sheet.getRange('A3:C3').setFontWeight('bold');
+  sheet.getRange('A9').setFontWeight('bold');
+  sheet.getRange('A14').setFontWeight('bold');
+  sheet.getRange('B4:B18').setHorizontalAlignment('right');
+  sheet.getRange('C1:C18').setFontColor('#64748b');
+
+  sheet.getRange('B4').setNumberFormat('0');
+  sheet.getRange('B5').setNumberFormat('0');
+  sheet.getRange('B6').setNumberFormat('0.0%');
+  sheet.getRange('B7').setNumberFormat('0');
+  sheet.getRange('B10').setNumberFormat('0');
+  sheet.getRange('B11').setNumberFormat('0.0%');
+  sheet.getRange('B12').setNumberFormat('0.0');
+  sheet.getRange('B15').setNumberFormat('0.00');
+  sheet.getRange('B16').setNumberFormat('0.0');
+  sheet.getRange('B17').setNumberFormat('0');
+  sheet.getRange('B18').setNumberFormat('0.00');
+
+  sheet.setColumnWidth(1, 220);
+  sheet.setColumnWidth(2, 130);
+  sheet.setColumnWidth(3, 430);
+  sheet.setFrozenRows(3);
+
+  // Amber says look, red says act. Only the four numbers that can warn before a failure.
+  const amber = { background: '#fef7e0', color: '#b45309' };
+  const red = { background: '#fce8e6', color: '#b91c1c' };
+  // Sheets applies the first rule that matches, so each red threshold has to be listed
+  // ahead of its amber one - the other way round, amber would swallow every red value.
+  const rules = [
+    threshold_(sheet.getRange('B7'), 1, red),
+    threshold_(sheet.getRange('B6'), 0.1, amber),
+    threshold_(sheet.getRange('B11'), 0.8, red),
+    threshold_(sheet.getRange('B11'), 0.5, amber),
+    threshold_(sheet.getRange('B18'), 20, red),
+    threshold_(sheet.getRange('B18'), 10, amber)
+  ];
+  sheet.setConditionalFormatRules(rules);
+
+  return sheet;
+}
+
+function threshold_(range, atLeast, style) {
+  return SpreadsheetApp.newConditionalFormatRule()
+    .whenNumberGreaterThanOrEqualTo(atLeast)
+    .setBackground(style.background)
+    .setFontColor(style.color)
+    .setRanges([range])
+    .build();
+}
+
+/**
+ * Builds the Monitor tab in every level file. Safe to re-run: the tab holds formulas only,
+ * so rebuilding it loses nothing. Run from the editor's function dropdown.
+ */
+function buildMonitorSheets() {
+  LEVEL_SHEET_IDS.forEach(function (entry) {
+    const ss = SpreadsheetApp.openById(entry[1]);
+    // Guarantees the formulas have a Logs tab to point at rather than resolving to #REF.
+    ensureLogSheet_(ss);
+    buildMonitorSheet_(ss);
+  });
 }
