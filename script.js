@@ -47,8 +47,17 @@ const SynapseScoresheet = (() => {
 
   const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
   const DRAFT_KEY_PREFIX = 'scoresheet.draft.';
+  const HISTORY_KEY_PREFIX = 'scoresheet.history.';
+  const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
+  const HISTORY_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
   const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
+
+  const HISTORY_MISSION_NAMES = {
+    containment: 'Containment',
+    neutralization: 'Neutralization',
+    analysis: 'Analysis'
+  };
 
   // The Sheet decides the level, so this only ever changes from the Config tab.
   let activeLevel = 'creator';
@@ -66,6 +75,8 @@ const SynapseScoresheet = (() => {
   let tryValue = 0;
   // Team options arrive with metadata, so keep the restored value until that list exists.
   let restoredTeam = '';
+  let historyCleanupTicker = null;
+  let historyLastFocus = null;
 
   function escapeHtml(str) {
     return String(str)
@@ -104,6 +115,10 @@ const SynapseScoresheet = (() => {
 
   function getDraftKey() {
     return DRAFT_KEY_PREFIX + getActiveSheetId();
+  }
+
+  function getHistoryKey() {
+    return HISTORY_KEY_PREFIX + getActiveSheetId();
   }
 
   function saveDraft() {
@@ -180,6 +195,204 @@ const SynapseScoresheet = (() => {
       return 150;
     }
     return POINTS[missionType] || 0;
+  }
+
+  function writeSubmissionHistory_(entries) {
+    try {
+      localStorage.setItem(getHistoryKey(), JSON.stringify(entries));
+      return true;
+    } catch (err) {
+      console.warn('Could not save submission history:', err);
+      return false;
+    }
+  }
+
+  /** Reads newest first and permanently removes records older than 24 hours. */
+  function readSubmissionHistory_() {
+    let parsed = [];
+    let shouldRewrite = false;
+
+    try {
+      const raw = localStorage.getItem(getHistoryKey());
+      parsed = raw ? JSON.parse(raw) : [];
+    } catch (err) {
+      parsed = [];
+      shouldRewrite = true;
+    }
+
+    if (!Array.isArray(parsed)) {
+      parsed = [];
+      shouldRewrite = true;
+    }
+
+    const cutoff = Date.now() - HISTORY_TTL_MS;
+    const fresh = parsed
+      .filter((entry) => entry && Number(entry.submittedAt) >= cutoff)
+      .sort((a, b) => Number(b.submittedAt) - Number(a.submittedAt));
+
+    if (shouldRewrite || fresh.length !== parsed.length) writeSubmissionHistory_(fresh);
+    return fresh;
+  }
+
+  function createSubmissionHistoryEntry_(submission) {
+    const banner = document.getElementById('competition-banner');
+
+    return {
+      version: 1,
+      id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9),
+      submittedAt: Date.now(),
+      status: '',
+      row: '',
+      submissionId: '',
+      competition: banner ? banner.textContent.trim() : '',
+      competitionDate: competitionInfo.competitionDate || '',
+      sheetId: submission.sheetId,
+      deviceId: submission.deviceId,
+      level: activeLevel,
+      judge: submission.judge,
+      team: submission.team,
+      round: submission.round,
+      totalScore: submission.totalScore,
+      missionTime: submission.missionTime,
+      tryCount: submission.tryCount,
+      scores: Object.assign({}, scoreState),
+      leanbots: Object.assign({}, leanbotState),
+      hasPhoto: !!submission.photoBase64
+    };
+  }
+
+  function saveSubmissionHistoryEntry_(entry, status, result) {
+    const savedEntry = Object.assign({}, entry, {
+      status: status,
+      row: result && result.row ? result.row : '',
+      submissionId: result && result.submissionId ? result.submissionId : ''
+    });
+    const entries = readSubmissionHistory_();
+    entries.unshift(savedEntry);
+
+    const saved = writeSubmissionHistory_(entries);
+    renderSubmissionHistory_();
+    return saved;
+  }
+
+  function formatHistoryTimestamp_(timestamp) {
+    const date = new Date(Number(timestamp));
+    if (Number.isNaN(date.getTime())) return '';
+
+    const two = (value) => String(value).padStart(2, '0');
+    return two(date.getDate()) + '/' + two(date.getMonth() + 1)
+      + ' ' + two(date.getHours()) + ':' + two(date.getMinutes()) + ':' + two(date.getSeconds());
+  }
+
+  function renderSubmissionHistory_() {
+    const body = document.getElementById('history-body');
+    const empty = document.getElementById('history-empty');
+    const tableWrap = document.getElementById('history-table-wrap');
+    if (!body || !empty || !tableWrap) return;
+
+    const entries = readSubmissionHistory_();
+    empty.hidden = entries.length > 0;
+    tableWrap.hidden = entries.length === 0;
+
+    body.innerHTML = entries.map((entry) => {
+      const statusClass = entry.status === 'queued' ? ' is-queued' : '';
+      const round = entry.round === '' || entry.round === undefined ? '-' : entry.round;
+      const total = Number.isFinite(Number(entry.totalScore)) ? Number(entry.totalScore) : 0;
+      const label = 'View ' + String(entry.team || 'submission') + ' details';
+
+      return '<tr class="history-entry' + statusClass + '" data-history-id="'
+        + escapeHtml(entry.id || '') + '" tabindex="0" role="button" aria-label="'
+        + escapeHtml(label) + '">'
+        + '<td>' + escapeHtml(formatHistoryTimestamp_(entry.submittedAt)) + '</td>'
+        + '<td>' + escapeHtml(entry.team || '-') + '</td>'
+        + '<td>' + escapeHtml(round) + '</td>'
+        + '<td>' + escapeHtml(total) + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  function getHistoryMissionText_(blockId, missionType) {
+    if (!missionType || !HISTORY_MISSION_NAMES[missionType]) return '-';
+    return HISTORY_MISSION_NAMES[missionType] + ' (' + getMissionPoints(blockId, missionType) + ')';
+  }
+
+  function buildHistoryDetails_(entry) {
+    const level = String(entry.level || '').toLowerCase();
+    const blockIds = LEVELS[level] || ALL_BLOCKS.map((block) => block.id);
+    const botIds = LEANBOT_LEVELS[level] || [];
+    const savedScores = entry.scores && typeof entry.scores === 'object' ? entry.scores : {};
+    const savedLeanbots = entry.leanbots && typeof entry.leanbots === 'object' ? entry.leanbots : {};
+    const status = entry.status === 'queued' ? 'Saved offline' : 'Submitted';
+    const round = entry.round === '' || entry.round === undefined ? '-' : entry.round;
+
+    const fields = [
+      ['Submitted', formatHistoryTimestamp_(entry.submittedAt)],
+      ['Status', status],
+      ['Competition', entry.competition || '-'],
+      ['Competition Date', entry.competitionDate || '-'],
+      ['Level', level || '-'],
+      ['Judge', entry.judge || '-'],
+      ['Team', entry.team || '-'],
+      ['Round', round],
+      ['Time', entry.missionTime || '-'],
+      ['Try', entry.tryCount === undefined ? '-' : entry.tryCount],
+      ['Total Score', Number.isFinite(Number(entry.totalScore)) ? Number(entry.totalScore) : 0],
+      ['Photo', entry.hasPhoto ? 'Included in Sheet submission' : 'None']
+    ];
+
+    if (entry.row) fields.push(['Sheet Row', entry.row]);
+    if (entry.submissionId) fields.push(['Submission ID', entry.submissionId]);
+
+    const fieldHtml = fields.map((field) => (
+      '<div class="history-detail-field"><span>' + escapeHtml(field[0]) + '</span><strong>'
+      + escapeHtml(field[1]) + '</strong></div>'
+    )).join('');
+
+    const blockHtml = blockIds.map((blockId) => {
+      const block = ALL_BLOCKS.find((item) => item.id === blockId);
+      return '<tr><td>' + escapeHtml(block ? block.name : blockId) + '</td><td>'
+        + escapeHtml(getHistoryMissionText_(blockId, savedScores[blockId])) + '</td></tr>';
+    }).join('');
+
+    const leanbotHtml = botIds.map((botId) => {
+      const bot = ALL_LEANBOTS.find((item) => item.id === botId);
+      const value = savedLeanbots[botId] ? 'CRL (' + POINTS.crl + ')' : '-';
+      return '<tr><td>' + escapeHtml(bot ? bot.name : botId) + '</td><td>'
+        + escapeHtml(value) + '</td></tr>';
+    }).join('');
+
+    return '<div class="history-detail-grid">' + fieldHtml + '</div>'
+      + '<h3>Mission Scores</h3>'
+      + '<div class="history-detail-table-wrap"><table class="history-detail-table"><tbody>'
+      + blockHtml + leanbotHtml + '</tbody></table></div>';
+  }
+
+  function openSubmissionHistory_(id) {
+    const entry = readSubmissionHistory_().find((item) => item.id === id);
+    const modal = document.getElementById('history-modal');
+    const content = document.getElementById('history-detail-content');
+    if (!entry || !modal || !content) {
+      renderSubmissionHistory_();
+      return;
+    }
+
+    historyLastFocus = document.activeElement;
+    content.innerHTML = buildHistoryDetails_(entry);
+    modal.hidden = false;
+    document.body.classList.add('history-modal-open');
+
+    const close = document.getElementById('history-close');
+    if (close) close.focus();
+  }
+
+  function closeSubmissionHistory_() {
+    const modal = document.getElementById('history-modal');
+    if (!modal || modal.hidden) return;
+
+    modal.hidden = true;
+    document.body.classList.remove('history-modal-open');
+    if (historyLastFocus && typeof historyLastFocus.focus === 'function') historyLastFocus.focus();
+    historyLastFocus = null;
   }
 
   function initScoreState() {
@@ -855,6 +1068,20 @@ const SynapseScoresheet = (() => {
 
     const deviceId = getOrCreateDeviceId();
     const sheetId = getActiveSheetId();
+    const submission = {
+      sheetId: sheetId,
+      deviceId: deviceId,
+      judge: validation.judge,
+      team: validation.team,
+      round: validation.round,
+      totalScore: totalScore,
+      missionTime: validation.missionTime,
+      tryCount: validation.tryCount,
+      scores: Object.assign({}, scoreState, leanbotState),
+      photoBase64: currentPhotoDataUrl,
+    };
+    const historyEntry = createSubmissionHistoryEntry_(submission);
+    const pendingBefore = pendingCount();
 
     btn.disabled = true;
     btn.textContent = 'Sending…';
@@ -863,30 +1090,33 @@ const SynapseScoresheet = (() => {
     try {
       // Competition and level are read from Config by the server, rather than trusted from
       // values sent by the scoring device.
-      const result = await SheetSubmit.submit({
-        sheetId: sheetId,
-        deviceId: deviceId,
-        judge: validation.judge,
-        team: validation.team,
-        round: validation.round,
-        totalScore: totalScore,
-        missionTime: validation.missionTime,
-        tryCount: validation.tryCount,
-        scores: Object.assign({}, scoreState, leanbotState),
-        photoBase64: currentPhotoDataUrl,
-      });
+      const result = await SheetSubmit.submit(submission);
+      const historySaved = saveSubmissionHistoryEntry_(historyEntry, 'submitted', result);
 
       if (result.duplicate && !result.viaRetry) {
-        setSubmitStatus('This run was already recorded.', 'ok');
+        const historyWarning = historySaved ? '' : ' History could not be saved on this device.';
+        setSubmitStatus(
+          'This run was already recorded.' + historyWarning,
+          historySaved ? 'ok' : 'warn'
+        );
       } else {
         const where = result.row ? ' - row ' + result.row : '';
-        setSubmitStatus('Submitted "' + validation.team + '"' + where + '.', 'ok');
+        const historyWarning = historySaved ? '' : ' History could not be saved on this device.';
+        setSubmitStatus(
+          'Submitted "' + validation.team + '"' + where + '.' + historyWarning,
+          historySaved ? 'ok' : 'warn'
+        );
       }
 
     } catch (err) {
       const pending = pendingCount();
-      if (pending > 0) {
-        setSubmitStatus('Saved on this device (' + pending + ' waiting), ' + err.message, 'warn');
+      if (pending > pendingBefore) {
+        const historySaved = saveSubmissionHistoryEntry_(historyEntry, 'queued', null);
+        const historyWarning = historySaved ? '' : ' History could not be saved.';
+        setSubmitStatus(
+          'Saved on this device (' + pending + ' waiting), ' + err.message + historyWarning,
+          'warn'
+        );
       } else {
         setSubmitStatus('Submit failed: ' + err.message, 'error');
       }
@@ -1063,11 +1293,42 @@ const SynapseScoresheet = (() => {
       btnSubmit.addEventListener('click', handleSubmit);
     }
 
+    const historyBody = document.getElementById('history-body');
+    if (historyBody) {
+      historyBody.addEventListener('click', (e) => {
+        const entry = e.target.closest('[data-history-id]');
+        if (entry) openSubmissionHistory_(entry.getAttribute('data-history-id'));
+      });
+
+      historyBody.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const entry = e.target.closest('[data-history-id]');
+        if (!entry) return;
+
+        e.preventDefault();
+        openSubmissionHistory_(entry.getAttribute('data-history-id'));
+      });
+    }
+
+    const historyClose = document.getElementById('history-close');
+    if (historyClose) historyClose.addEventListener('click', closeSubmissionHistory_);
+
+    const historyModal = document.getElementById('history-modal');
+    if (historyModal) {
+      historyModal.addEventListener('click', (e) => {
+        if (e.target === historyModal) closeSubmissionHistory_();
+      });
+    }
+
     window.addEventListener('online', () => flushQueue(false));
 
     // A phone that sat locked through the break comes back showing the round it left on.
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) renderClock();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeSubmissionHistory_();
     });
   }
 
@@ -1081,11 +1342,15 @@ const SynapseScoresheet = (() => {
     renderTable();
     renderLevel();
     renderTryButtons();
+    renderSubmissionHistory_();
     setupEvents();
     loadMetadata();
     flushQueue(true);
 
     if (!roundTicker) roundTicker = setInterval(renderClock, 20000);
+    if (!historyCleanupTicker) {
+      historyCleanupTicker = setInterval(renderSubmissionHistory_, HISTORY_CLEANUP_INTERVAL_MS);
+    }
   }
 
   if (document.readyState === 'loading') {

@@ -144,6 +144,40 @@
          href="https://docs.google.com/spreadsheets/d/1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc/edit"
          target="_blank" rel="noopener">View Submission &#8599;</a>
     </footer>
+
+    <!-- Submission history is device-local and automatically expires after 24 hours. -->
+    <section class="history-section" aria-labelledby="history-title">
+      <div class="history-header">
+        <h2 id="history-title">History</h2>
+        <span>Last 24 hours</span>
+      </div>
+
+      <p class="history-empty" id="history-empty">No submissions in the last 24 hours.</p>
+
+      <div class="history-table-wrap" id="history-table-wrap" hidden>
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Submitted</th>
+              <th>Team</th>
+              <th>Round</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="history-modal" id="history-modal" hidden>
+      <section class="history-dialog" role="dialog" aria-modal="true" aria-labelledby="history-dialog-title">
+        <header class="history-dialog-header">
+          <h2 id="history-dialog-title">Submission Details</h2>
+          <button type="button" class="history-close" id="history-close" aria-label="Close history details">&times;</button>
+        </header>
+        <div class="history-detail-content" id="history-detail-content"></div>
+      </section>
+    </div>
   </main>
 </body>
 
