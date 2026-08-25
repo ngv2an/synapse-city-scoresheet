@@ -653,7 +653,8 @@ const SynapseScoresheet = (() => {
 
   function renderTryButtons() {
     const group = document.getElementById('try-options');
-    const lit = tryMatchesButton();
+    const boxActive = tryUsesTextInput() || tryBoxHasFocus();
+    const lit = tryMatchesButton() && !boxActive;
     if (group) {
       group.querySelectorAll('.try-btn').forEach((btn) => {
         const active = lit && btn.getAttribute('data-try') === String(tryValue);
@@ -663,7 +664,7 @@ const SynapseScoresheet = (() => {
     }
 
     const input = document.getElementById('try-input');
-    if (input) input.classList.toggle('active', tryUsesTextInput());
+    if (input) input.classList.toggle('active', boxActive);
   }
 
   function getTypedTry() {
@@ -684,6 +685,13 @@ const SynapseScoresheet = (() => {
     const typed = getTypedTry();
     if (!/^\d{1,2}$/.test(typed)) return false;
     return Number(typed) > 3;
+  }
+
+  /** Tapping the box is already the answer "not one of these four", so it lights up
+   *  on focus instead of waiting for the count to be typed. */
+  function tryBoxHasFocus() {
+    const input = document.getElementById('try-input');
+    return !!input && document.activeElement === input;
   }
 
   /** Typing 0-3 is the same answer as tapping that button, so the two never drift apart. */
@@ -1353,6 +1361,9 @@ const SynapseScoresheet = (() => {
 
     const tryInput = document.getElementById('try-input');
     if (tryInput) {
+      tryInput.addEventListener('focus', renderTryButtons);
+      tryInput.addEventListener('blur', renderTryButtons);
+
       tryInput.addEventListener('input', () => {
         const hadTryError = tryInput.getAttribute('aria-invalid') === 'true';
         tryInput.value = tryInput.value.replace(/\D/g, '').slice(0, 2);
