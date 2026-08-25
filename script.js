@@ -171,13 +171,6 @@ const SynapseScoresheet = (() => {
     syncTryValueFromBox();
   }
 
-  function clearDraft() {
-    restoredTeam = '';
-    try {
-      localStorage.removeItem(getDraftKey());
-    } catch (e) {}
-  }
-
   function isMissionDisabled(blockId, missionType) {
     const disabledList = DISABLED_MISSIONS[blockId] || [];
     return disabledList.includes(missionType);
@@ -531,14 +524,6 @@ const SynapseScoresheet = (() => {
     renderTable();
   }
 
-  function clearForNextTeam() {
-    const teamSelect = document.getElementById('team-select');
-    if (teamSelect) teamSelect.value = '';
-
-    resetRunState();
-    clearDraft();
-  }
-
   async function loadMetadata() {
     const sheetId = getActiveSheetId();
     const cacheKey = METADATA_KEY_PREFIX + sheetId;
@@ -873,8 +858,8 @@ const SynapseScoresheet = (() => {
     setSubmitStatus('', null);
 
     try {
-      // Competition and level are not sent: one Sheet is one competition at one level, both
-      // already in its Config tab, so a column would repeat them on every single row.
+      // Competition and level are read from Config by the server, rather than trusted from
+      // values sent by the scoring device.
       const result = await SheetSubmit.submit({
         sheetId: sheetId,
         deviceId: deviceId,
@@ -892,15 +877,13 @@ const SynapseScoresheet = (() => {
         setSubmitStatus('This run was already recorded.', 'ok');
       } else {
         const where = result.row ? ' - row ' + result.row : '';
-        setSubmitStatus('Submitted "' + validation.team + '"' + where + '. Cleared for next run.', 'ok');
+        setSubmitStatus('Submitted "' + validation.team + '"' + where + '.', 'ok');
       }
-      clearForNextTeam();
 
     } catch (err) {
       const pending = pendingCount();
       if (pending > 0) {
         setSubmitStatus('Saved on this device (' + pending + ' waiting), ' + err.message, 'warn');
-        clearForNextTeam();
       } else {
         setSubmitStatus('Submit failed: ' + err.message, 'error');
       }
