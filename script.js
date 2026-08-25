@@ -1491,6 +1491,18 @@ const SynapseScoresheet = (() => {
     // Mission Time: digits only, the mask puts the separators in.
     const timeInput = document.getElementById('mission-time');
     if (timeInput) {
+      // The default is a starting point, not an answer, so reaching for the field to type
+      // a real time should not mean clearing seven characters by hand first. A time the
+      // judge typed is left alone - only the untouched default steps aside.
+      timeInput.addEventListener('focus', () => {
+        if (timeInput.value === DEFAULT_MISSION_TIME) timeInput.value = '';
+      });
+
+      // Opened and left as it was: the default comes back rather than an empty box.
+      timeInput.addEventListener('blur', () => {
+        if (!timeInput.value.trim()) timeInput.value = DEFAULT_MISSION_TIME;
+      });
+
       timeInput.addEventListener('input', () => {
         timeInput.value = formatMissionTime(timeInput.value);
         timeInput.removeAttribute('aria-invalid');
