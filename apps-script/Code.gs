@@ -38,11 +38,11 @@ const SCORE_LEVEL_TITLES = {
  * Column order of the Scores tab. The block columns follow the order the judge sees them
  * in on screen, not the order they happen to sit in the payload.
  *
- * Competition and Level are deliberately absent: one Sheet is one competition at one
- * level, both already named in the Config tab, so a column would repeat them on every row.
+ * Competition is deliberately absent because one Sheet belongs to one competition. Level
+ * is stored on every row so combined/exported score data remains self-describing.
  */
 const HEADERS_SCORES = [
-  'Submission Time', 'Device ID', 'Judge', 'Team', 'Round', 'Score', 'Time', 'Try',
+  'Submission Time', 'Device ID', 'Level', 'Judge', 'Team', 'Round', 'Score', 'Time', 'Try',
   'Green', 'Blue', 'Purple', 'Mystery', 'Red', 'Yellow 1', 'Yellow 2', 'Leanbot 1', 'Leanbot 2',
   'Photo URL', 'Submission ID', 'User Agent'
 ];
@@ -242,11 +242,13 @@ function doPost(e) {
     // Wait for lock to append row safely
     lock.waitLock(30000);
     const sheet = getScoreSheet_(sheetId);
+    const levelTitle = sheet.getName().slice(SCORE_SHEET_PREFIX.length);
     const s = body.scores || {};
 
     sheet.appendRow([
       new Date(),
       body.deviceId || '',
+      levelTitle,
       body.judge || '',
       body.team || '',
       body.round !== undefined && body.round !== '' ? Number(body.round) : '',
@@ -290,8 +292,8 @@ function resolveSheetId_(input) {
   return str;
 }
 
-/** Returns the active Scores tab name, for example "Scores - Explorer". */
-function getScoreSheetName_(ss) {
+/** Returns the display form of Config Level, for example "Explorer". */
+function getScoreLevelTitle_(ss) {
   const level = readConfig_(ss).level;
   const levelTitle = SCORE_LEVEL_TITLES[level];
 
@@ -301,7 +303,12 @@ function getScoreSheetName_(ss) {
     );
   }
 
-  return SCORE_SHEET_PREFIX + levelTitle;
+  return levelTitle;
+}
+
+/** Returns the active Scores tab name, for example "Scores - Explorer". */
+function getScoreSheetName_(ss) {
+  return SCORE_SHEET_PREFIX + getScoreLevelTitle_(ss);
 }
 
 /**
@@ -329,8 +336,8 @@ function findScoreSheet_(ss, expectedName) {
 }
 
 /** Creates the level Scores tab or renames the copied/legacy tab to the current level. */
-function ensureScoreSheet_(ss) {
-  const expectedName = getScoreSheetName_(ss);
+function ensureScoreSheet_(ss, levelTitle) {
+  const expectedName = SCORE_SHEET_PREFIX + (levelTitle || getScoreLevelTitle_(ss));
   let sheet = findScoreSheet_(ss, expectedName);
 
   if (!sheet) return ss.insertSheet(expectedName);
@@ -338,17 +345,48 @@ function ensureScoreSheet_(ss) {
   return sheet;
 }
 
-function getScoreSheet_(sheetId) {
-  const ss = SpreadsheetApp.openById(sheetId);
-  const sheet = ensureScoreSheet_(ss);
-
+/**
+ * Upgrades the old Scores layout by inserting Level before Judge. Existing rows are filled
+ * with this file's current level, while all later submissions write their level directly.
+ */
+function ensureScoreSheetSchema_(sheet, levelTitle) {
   if (sheet.getLastRow() === 0) {
     writeScoreHeaders_(sheet);
-  } else {
-    formatSubmissionTimeColumn_(sheet);
+    return;
   }
 
+  const thirdHeader = String(sheet.getRange(1, 3).getValue() || '').trim();
+
+  if (thirdHeader === 'Judge') {
+    sheet.insertColumnBefore(3);
+    sheet.getRange(1, 3).setValue('Level').setFontWeight('bold');
+
+    const dataRowCount = sheet.getLastRow() - 1;
+    if (dataRowCount > 0) {
+      const levels = Array.from({ length: dataRowCount }, function () {
+        return [levelTitle];
+      });
+      sheet.getRange(2, 3, dataRowCount, 1).setValues(levels);
+    }
+  } else if (thirdHeader !== 'Level') {
+    throw new Error(
+      'Unexpected Scores layout: cell C1 must be "Level" (new) or "Judge" (old).'
+    );
+  }
+
+  formatSubmissionTimeColumn_(sheet);
+}
+
+function prepareScoreSheet_(ss) {
+  const levelTitle = getScoreLevelTitle_(ss);
+  const sheet = ensureScoreSheet_(ss, levelTitle);
+  ensureScoreSheetSchema_(sheet, levelTitle);
   return sheet;
+}
+
+function getScoreSheet_(sheetId) {
+  const ss = SpreadsheetApp.openById(sheetId);
+  return prepareScoreSheet_(ss);
 }
 
 /**
@@ -357,12 +395,12 @@ function getScoreSheet_(sheetId) {
  */
 function onOpen(e) {
   const ss = e && e.source ? e.source : SpreadsheetApp.getActiveSpreadsheet();
-  if (ss) ensureScoreSheet_(ss);
+  if (ss) prepareScoreSheet_(ss);
 }
 
 function onEdit(e) {
   if (!e || !e.range || e.range.getSheet().getName() !== SHEET_NAME_CONFIG) return;
-  ensureScoreSheet_(e.source);
+  prepareScoreSheet_(e.source);
 }
 
 function writeScoreHeaders_(sheet) {
