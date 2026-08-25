@@ -431,22 +431,16 @@ const SynapseScoresheet = (() => {
   }
 
   /**
-   * Digits fill in from the right the way a stopwatch reads out, so 12345 becomes 1:23.45
-   * and nobody types a colon. Every half-typed state is a real time as well - 123 reads as
-   * 1.23 seconds, not a mask with holes in it - so the field never shows nonsense mid-entry.
+   * Build the stopwatch value from left to right as the judge types: 1, 1.2, 1.23,
+   * 1.23.4, 1.23.45. Separators are display-only, so pasted/formatted values normalize too.
    */
   function formatMissionTime(raw) {
-    // The zeros this mask pads with come straight back in on the next keystroke, so they
-    // have to go first - without this, typing 1 2 3 walks 0.01 -> 00.12 -> 0:01.23.
-    const digits = String(raw).replace(/[^0-9]/g, '').replace(/^0+/, '').slice(-6);
+    const digits = String(raw).replace(/[^0-9]/g, '').slice(0, 5);
     if (!digits) return '';
+    if (digits.length === 1) return digits;
+    if (digits.length <= 3) return digits.slice(0, 1) + '.' + digits.slice(1);
 
-    const padded = digits.padStart(3, '0');
-    const centis = padded.slice(-2);
-    const seconds = padded.slice(0, -2);
-
-    if (seconds.length <= 2) return seconds + '.' + centis;
-    return seconds.slice(0, -2) + ':' + seconds.slice(-2) + '.' + centis;
+    return digits.slice(0, 1) + '.' + digits.slice(1, 3) + '.' + digits.slice(3);
   }
 
   function renderTryButtons() {
