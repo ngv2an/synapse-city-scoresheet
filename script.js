@@ -636,16 +636,16 @@ const SynapseScoresheet = (() => {
   }
 
   /**
-   * Build the stopwatch value from left to right as the judge types: 1, 1.2, 1.23,
-   * 1.23.4, 1.23.45. Separators are display-only, so pasted/formatted values normalize too.
+   * Build the stopwatch value from left to right as the judge types: 1, 1:2, 1:23,
+   * 1:23.4, 1:23.45. Separators are display-only, so pasted/formatted values normalize too.
    */
   function formatMissionTime(raw) {
     const digits = String(raw).replace(/[^0-9]/g, '').slice(0, 5);
     if (!digits) return '';
     if (digits.length === 1) return digits;
-    if (digits.length <= 3) return digits.slice(0, 1) + '.' + digits.slice(1);
+    if (digits.length <= 3) return digits.slice(0, 1) + ':' + digits.slice(1);
 
-    return digits.slice(0, 1) + '.' + digits.slice(1, 3) + '.' + digits.slice(3);
+    return digits.slice(0, 1) + ':' + digits.slice(1, 3) + '.' + digits.slice(3);
   }
 
   function renderTryButtons() {

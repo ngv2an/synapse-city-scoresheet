@@ -45,11 +45,11 @@
       </label>
 
       <label class="entry-row">
-          <span class="entry-label">Time</span>
-          <!-- Stays type=text so the mask can hold '.'; inputmode brings up the
+          <span class="entry-label">Time (mm:ss.ss)</span>
+          <!-- Stays type=text so the mask can hold ':' and '.'; inputmode brings up the
                numeric keypad, and pattern is what older iOS reads for the same thing. -->
           <input type="text" id="mission-time" class="entry-input" inputmode="numeric" pattern="[0-9]*"
-                 placeholder="1.23.45" maxlength="7" autocomplete="off">
+                 placeholder="1:23.45" maxlength="7" autocomplete="off">
       </label>
 
       <div class="entry-row entry-row-try">
@@ -66,6 +66,11 @@
               <button type="button" class="try-btn" data-try="3" aria-pressed="false">3</button>
             </div>
           </div>
+      </div>
+
+      <div class="entry-row">
+        <span class="entry-label">Score</span>
+        <output class="entry-score-value" id="total-score">0</output>
       </div>
     </section>
 
@@ -95,12 +100,8 @@
       </table>
     </section>
 
-    <!-- Existing score and photo controls stay together after the two scoring tables. -->
-    <section class="score-action-bar" aria-label="Score and photo">
-      <div class="total-score-badge">
-        <span class="total-label">Total Score</span>
-        <span class="total-score" id="total-score">0</span>
-      </div>
+    <!-- Photo control stays below the two scoring tables. -->
+    <section class="score-action-bar" aria-label="Photo">
       <button class="btn-action btn-photo" id="btn-photo" title="Photo">Photo</button>
     </section>
 
