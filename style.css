@@ -1043,6 +1043,20 @@ body.timetable-modal-open {
   text-align: right;
 }
 
+/* The stored copy is only 640px wide, so let it fill the dialog rather than upscale past it. */
+.history-detail-photo {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #f1f5f9;
+}
+
+.history-detail-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 /* Footer with Synapse City Logo */
 .app-footer {
   text-align: center;

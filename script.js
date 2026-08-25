@@ -49,6 +49,10 @@ const SynapseScoresheet = (() => {
   const DRAFT_KEY_PREFIX = 'scoresheet.draft.';
   const HISTORY_KEY_PREFIX = 'scoresheet.history.';
   const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
+  // The Sheet gets the full photo; history keeps a smaller copy so a day of runs fits
+  // in the ~5MB localStorage box.
+  const HISTORY_PHOTO_MAX_SIZE = 640;
+  const HISTORY_PHOTO_QUALITY = 0.6;
   const HISTORY_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
   const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
@@ -71,6 +75,8 @@ const SynapseScoresheet = (() => {
   let leanbotState = {};
   // Compressed data URL of the mission photo, sent along with the score
   let currentPhotoDataUrl = '';
+  // Smaller copy of the same photo, the one that goes into this device's history
+  let currentPhotoThumbUrl = '';
   // Try: the count the row means, kept in step with the box - typing 0-3 is the same
   // answer as tapping that button, so it lights up either way.
   let tryValue = 0;
@@ -200,13 +206,35 @@ const SynapseScoresheet = (() => {
     return POINTS[missionType] || 0;
   }
 
+  /**
+   * Photos are what fill the storage box, so a full store gives up the oldest one and
+   * tries again - a run's scores are worth keeping even when its picture is not.
+   */
   function writeSubmissionHistory_(entries) {
-    try {
-      localStorage.setItem(getHistoryKey(), JSON.stringify(entries));
-      return true;
-    } catch (err) {
-      console.warn('Could not save submission history:', err);
-      return false;
+    let payload = entries;
+
+    for (;;) {
+      try {
+        localStorage.setItem(getHistoryKey(), JSON.stringify(payload));
+        return true;
+      } catch (err) {
+        // Entries run newest first, so the last one still holding a photo is the oldest.
+        let dropIndex = -1;
+        for (let i = payload.length - 1; i >= 0; i -= 1) {
+          if (payload[i] && payload[i].photo) {
+            dropIndex = i;
+            break;
+          }
+        }
+
+        if (dropIndex < 0) {
+          console.warn('Could not save submission history:', err);
+          return false;
+        }
+
+        payload = payload.slice();
+        payload[dropIndex] = Object.assign({}, payload[dropIndex], { photo: '' });
+      }
     }
   }
 
@@ -260,7 +288,8 @@ const SynapseScoresheet = (() => {
       tryCount: submission.tryCount,
       scores: Object.assign({}, scoreState),
       leanbots: Object.assign({}, leanbotState),
-      hasPhoto: !!submission.photoBase64
+      hasPhoto: !!submission.photoBase64,
+      photo: currentPhotoThumbUrl
     };
   }
 
@@ -328,6 +357,12 @@ const SynapseScoresheet = (() => {
     return HISTORY_MISSION_NAMES[missionType] + ' (' + getMissionPoints(blockId, missionType) + ')';
   }
 
+  /** Never hand an <img> a stored value that is not still a data: image of its own. */
+  function getHistoryPhotoUrl_(entry) {
+    const url = entry && typeof entry.photo === 'string' ? entry.photo : '';
+    return /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(url) ? url : '';
+  }
+
   function buildHistoryDetails_(entry) {
     const level = String(entry.level || '').toLowerCase();
     const blockIds = LEVELS[level] || ALL_BLOCKS.map((block) => block.id);
@@ -336,6 +371,8 @@ const SynapseScoresheet = (() => {
     const savedLeanbots = entry.leanbots && typeof entry.leanbots === 'object' ? entry.leanbots : {};
     const status = entry.status === 'queued' ? 'Saved offline' : 'Submitted';
     const round = entry.round === '' || entry.round === undefined ? '-' : entry.round;
+    // Older records, and any whose photo was dropped to make room, keep the flag but not the copy.
+    const photoUrl = getHistoryPhotoUrl_(entry);
 
     const fields = [
       ['Submitted', formatHistoryTimestamp_(entry.submittedAt)],
@@ -349,7 +386,7 @@ const SynapseScoresheet = (() => {
       ['Time', entry.missionTime || '-'],
       ['Try', entry.tryCount === undefined ? '-' : entry.tryCount],
       ['Total Score', Number.isFinite(Number(entry.totalScore)) ? Number(entry.totalScore) : 0],
-      ['Photo', entry.hasPhoto ? 'Included in Sheet submission' : 'None']
+      ['Photo', !entry.hasPhoto ? 'None' : (photoUrl ? 'Included in Sheet submission' : 'In Sheet only')]
     ];
 
     if (entry.row) fields.push(['Sheet Row', entry.row]);
@@ -373,10 +410,17 @@ const SynapseScoresheet = (() => {
         + escapeHtml(value) + '</td></tr>';
     }).join('');
 
+    const photoHtml = photoUrl
+      ? '<h3>Mission Photo</h3><div class="history-detail-photo"><img src="'
+        + escapeHtml(photoUrl) + '" alt="Mission photo for '
+        + escapeHtml(entry.team || 'this run') + '"></div>'
+      : '';
+
     return '<div class="history-detail-grid">' + fieldHtml + '</div>'
       + '<h3>Mission Scores</h3>'
       + '<div class="history-detail-table-wrap"><table class="history-detail-table"><tbody>'
-      + blockHtml + leanbotHtml + '</tbody></table></div>';
+      + blockHtml + leanbotHtml + '</tbody></table></div>'
+      + photoHtml;
   }
 
   function openSubmissionHistory_(id) {
@@ -621,11 +665,17 @@ const SynapseScoresheet = (() => {
     if (container) container.style.display = 'none';
     if (photoInput) photoInput.value = '';
     currentPhotoDataUrl = '';
+    currentPhotoThumbUrl = '';
   }
 
-  function compressImage(file, maxSize = 1280, quality = 0.7) {
+  /** Takes the camera File, or a data URL already produced by this same function. */
+  function compressImage(source, maxSize = 1280, quality = 0.7) {
     return new Promise((resolve, reject) => {
-      const objectUrl = URL.createObjectURL(file);
+      const isFile = typeof source !== 'string';
+      const src = isFile ? URL.createObjectURL(source) : source;
+      const release = () => {
+        if (isFile) URL.revokeObjectURL(src);
+      };
       const img = new Image();
 
       img.onload = () => {
@@ -634,16 +684,16 @@ const SynapseScoresheet = (() => {
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(objectUrl);
+        release();
         resolve(canvas.toDataURL('image/jpeg', quality));
       };
 
       img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
+        release();
         reject(new Error('Could not read the photo'));
       };
 
-      img.src = objectUrl;
+      img.src = src;
     });
   }
 
@@ -1311,6 +1361,16 @@ const SynapseScoresheet = (() => {
             container.style.display = 'block';
             container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           }
+
+          // Downscaled off the finished photo rather than the file, so it costs one
+          // cheap decode - and a failure here only means history shows no picture.
+          return compressImage(dataUrl, HISTORY_PHOTO_MAX_SIZE, HISTORY_PHOTO_QUALITY)
+            .then((thumb) => {
+              currentPhotoThumbUrl = thumb;
+            })
+            .catch(() => {
+              currentPhotoThumbUrl = '';
+            });
         }).catch((err) => {
           setSubmitStatus(err.message, 'error');
         });
