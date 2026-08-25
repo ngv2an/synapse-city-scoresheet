@@ -182,15 +182,19 @@ body {
 }
 
 .competition-meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  width: 100%;
 }
 
 .competition-meta > span:empty {
   display: none;
+}
+
+.competition-meta > span {
+  justify-self: center;
+  text-align: center;
 }
 
 .meta-round,
@@ -205,7 +209,12 @@ body {
 }
 
 .meta-level {
+  grid-column: 1;
   text-transform: capitalize;
+}
+
+.meta-round {
+  grid-column: 2;
 }
 
 /* Waiting for the first round reads differently from being in one. */
