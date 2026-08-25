@@ -234,6 +234,29 @@ function resetConfigSheet(sheetId) {
   return createConfigSheet_(ss, levelTitle, carried, index);
 }
 
+/**
+ * The editor's Run button takes a function name and no arguments, so each file gets its
+ * own entry in the dropdown. IDs come from LEVEL_SHEET_IDS, which is the same list the
+ * Explorer link directory is built from - there is no second copy to keep in step.
+ *
+ * Run them one at a time and check the file in between; this rewrites a live Config tab.
+ */
+function resetConfigExplorer() {
+  return resetConfigSheet(LEVEL_SHEET_IDS[0][1]);
+}
+
+function resetConfigCreator() {
+  return resetConfigSheet(LEVEL_SHEET_IDS[1][1]);
+}
+
+function resetConfigInnovator() {
+  return resetConfigSheet(LEVEL_SHEET_IDS[2][1]);
+}
+
+function resetConfigMaster() {
+  return resetConfigSheet(LEVEL_SHEET_IDS[3][1]);
+}
+
 function readConfig_(ss) {
   // A file with no Config tab has no level to preserve, so it is seeded as Explorer.
   const sheet = ss.getSheetByName(SHEET_NAME_CONFIG) || createConfigSheet_(ss, '');

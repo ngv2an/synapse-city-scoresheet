@@ -49,11 +49,26 @@ from the template.
 
 `createConfigSheet_()` only runs when a file has no `Config` tab, so publishing a new
 template does not touch files that already have one. To move an existing file onto the
-current layout, run `resetConfigSheet` by hand from the Apps Script editor, once per file:
+current layout, run the rebuild by hand from the Apps Script editor, once per file.
+
+The Run button takes a function name and passes no arguments, so there is one entry in the
+dropdown per file. In the editor, pick it from the function dropdown next to **Run**:
+
+- `resetConfigExplorer`
+- `resetConfigCreator`
+- `resetConfigInnovator`
+- `resetConfigMaster`
+
+Run them one at a time and check the file in between. The first run asks for authorization,
+because the script opens Sheets on your behalf. Whoever runs it needs edit access to the
+target file — this is a plain editor run, not the web app's *Execute as: Me*.
+
+All four wrappers call the same function, which also takes an ID or a full Sheet URL if you
+need a file that is not one of the four:
 
 ```js
-resetConfigSheet('1ljm-gzjs3UgJB-fuNghADJn_byl-CtHib0APSNol2T0');  // ID or full Sheet URL
-resetConfigSheet();                                               // DEFAULT_SHEET_ID
+resetConfigSheet('1ljm-gzjs3UgJB-fuNghADJn_byl-CtHib0APSNol2T0');
+resetConfigSheet();  // DEFAULT_SHEET_ID
 ```
 
 Everything the script can read is carried across and rewritten in its new position: level,
