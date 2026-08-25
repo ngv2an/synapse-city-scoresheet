@@ -400,29 +400,35 @@ body {
 .submit-section {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 6px;
+  width: 100%;
 }
 
 .btn-submit {
-  width: 100%;
-  min-height: 48px;
+  flex: 0 0 auto;
+  min-width: 155px;
+  padding: 0 19px;
+  min-height: 43px;
   border: 1px solid #0056b3;
   border-radius: 8px;
   background: #007bff;
   color: #ffffff;
   font-family: inherit;
-  font-size: 16px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
+  font-size: 14.5px;
+  font-weight: 800;
   cursor: pointer;
   touch-action: manipulation;
   box-shadow: 0 2px 6px rgba(0, 123, 255, 0.3);
   transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-submit:active {
   background: #0069d9;
-  transform: scale(0.98);
+  transform: scale(0.95);
 }
 
 .btn-submit:disabled {
@@ -442,6 +448,7 @@ body {
   font-weight: 800;
   line-height: 1.35;
   text-align: center;
+  width: 100%;
 }
 
 .submit-status.is-ok {
