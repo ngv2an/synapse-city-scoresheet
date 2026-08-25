@@ -22,7 +22,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(100%, 490px);
+  width: min(100%, 400px);
   margin: 0 auto;
 }
 
