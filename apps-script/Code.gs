@@ -24,7 +24,20 @@ const LEGACY_SHEET_NAME_SCORES = 'Scores';
 const SCORE_SHEET_PREFIX = 'Scores - ';
 const SHEET_NAME_CONFIG = 'Config';
 const SHEET_NAME_LOGS = 'Logs';
+// Kept only so the rebuild can delete the tab the dashboard used to live in.
 const SHEET_NAME_MONITOR = 'Monitor';
+
+/**
+ * The dashboard sits on top of the log rows in the one Logs tab, so the header is no
+ * longer row 1. Above the rows rather than beside them on purpose: appendRow() looks at
+ * the last used row of the whole sheet, and a block off to the right would push the first
+ * log rows down past it. Everything that reads or writes the log derives its position
+ * from these, and the tab is frozen through the header so the dashboard stays on screen
+ * while the log scrolls underneath it.
+ */
+const LOG_DASHBOARD_ROWS = 15;
+const LOG_HEADER_ROW = LOG_DASHBOARD_ROWS + 2;   // one blank row between the two
+const LOG_FIRST_DATA_ROW = LOG_HEADER_ROW + 1;
 // Photos are created one Drive file at a time, and file creation is the quota that could
 // bite. Storage is not: this counts files, not megabytes.
 const PHOTO_QUOTA_PER_DAY = 1500;
@@ -736,7 +749,7 @@ function ensureLogSheet_(ss) {
   let sheet = ss.getSheetByName(SHEET_NAME_LOGS);
 
   if (sheet) {
-    const header = sheet.getRange(1, 1, 1, HEADERS_LOGS.length).getValues()[0].join('|');
+    const header = sheet.getRange(LOG_HEADER_ROW, 1, 1, HEADERS_LOGS.length).getValues()[0].join('|');
     if (header === HEADERS_LOGS.join('|')) return sheet;
 
     const stamp = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd HHmm');
@@ -744,16 +757,16 @@ function ensureLogSheet_(ss) {
   }
 
   sheet = ss.insertSheet(SHEET_NAME_LOGS);
-  sheet.getRange(1, 1, 1, HEADERS_LOGS.length)
+  sheet.getRange(LOG_HEADER_ROW, 1, 1, HEADERS_LOGS.length)
     .setValues([HEADERS_LOGS])
     .setFontWeight('bold');
-  sheet.setFrozenRows(1);
 
   const widths = [160, 90, 100, 140, 160, 90, 90, 90, 130, 100, 220, 260];
   widths.forEach(function (width, i) {
     sheet.setColumnWidth(i + 1, width);
   });
 
+  buildLogDashboard_(sheet);
   return sheet;
 }
 
@@ -793,99 +806,110 @@ function logActivity_(ss, entry) {
 }
 
 /**
- * Builds the Monitor tab: a read-only dashboard of formulas over the Logs tab.
+ * Sheets parses a formula in the file's own locale. A file set to Vietnam - or Germany, or
+ * France - separates arguments with ';' and reads ',' as a decimal point, so US-style
+ * formulas written into it come back as #ERROR! in every single cell.
  *
- * It lives in its own tab on purpose. ensureLogSheet_ compares row 1 of Logs against
- * HEADERS_LOGS on every write, so anything inserted above those headers would make the
- * check fail and rename the tab away on the very next request.
+ * Asking the file which separator it takes beats keeping a table of locales: write one
+ * formula whose answer is known and read it back. A ';' file makes the probe either a
+ * parse error or SUM(1.1), and neither of those is 2, so both land on the right answer.
+ */
+function argumentSeparator_(sheet) {
+  const probe = sheet.getRange(1, 26);  // Z1: clear of the layout written below
+
+  probe.setFormula('=SUM(1,1)');
+  SpreadsheetApp.flush();
+  const separator = probe.getValue() === 2 ? ',' : ';';
+  probe.clearContent();
+
+  return separator;
+}
+
+/**
+ * Writes the dashboard that sits above the log rows in the Logs tab: a read-only block of
+ * formulas over the rows underneath it, rebuilt in place and holding no data of its own.
  *
  * Only the numbers that map to a limit that actually exists are here. There is no daily
  * quota on web app executions, so nothing counts seconds against a budget; what does bind
  * is Drive file creation, and how long each run holds the script lock.
+ *
+ * The formulas read A18:A downward rather than whole columns, which keeps the dashboard's
+ * own labels out of its own totals - text sorts above every number in a comparison, so a
+ * whole-column FILTER would sweep these rows into the throughput figures.
  */
-function buildMonitorSheet_(ss) {
-  const logs = SHEET_NAME_LOGS;
-  const today = 'Logs!A:A,">="&TODAY()';
+function buildLogDashboard_(sheet) {
+  const sep = argumentSeparator_(sheet);
+  const first = LOG_FIRST_DATA_ROW;
+  const col = (letter) => letter + first + ':' + letter;
+  const today = col('A') + sep + '">="&TODAY()';
 
   // Row numbers are referenced by the derived formulas below, so this layout is fixed.
+  // Decimals are written as fractions on purpose: '0.95' is a parse error wherever ','
+  // is the decimal point, while 95/100 reads the same in every locale.
   const rows = [
-    ['Monitor', '', 'Rebuild with buildMonitorSheets() after changing the Logs layout.'],
+    ['Logs', '', 'Dashboard above, log rows from ' + first + ' down. Rebuild with buildMonitorSheets().'],
     ['', '', ''],
     ['TODAY', 'Value', 'Watch'],
-    ['Submissions', '=COUNTIFS(' + logs + '!B:B,"Submit",' + logs + '!J:J,"OK",' + today + ')',
+    ['Submissions',
+      '=COUNTIFS(' + col('B') + sep + '"Submit"' + sep + col('J') + sep + '"OK"' + sep + today + ')',
       'Runs that reached the sheet, retries excluded'],
-    ['Retries (duplicate)', '=COUNTIFS(' + logs + '!B:B,"Submit",' + logs + '!J:J,"DUPLICATE",' + today + ')',
+    ['Config loads', '=COUNTIFS(' + col('B') + sep + '"Config"' + sep + today + ')',
+      'Metadata reads - no lock taken and no Drive file created'],
+    ['Retries (duplicate)',
+      '=COUNTIFS(' + col('B') + sep + '"Submit"' + sep + col('J') + sep + '"DUPLICATE"' + sep + today + ')',
       'Extra executions from replies the client lost'],
-    ['Retry rate', '=IFERROR(B5/(B4+B5),0)', 'Over 10% - look at the venue network'],
-    ['Errors', '=COUNTIFS(' + logs + '!J:J,"ERROR",' + today + ')', 'Any row here is worth reading'],
-    ['', '', ''],
-    ['PHOTOS', '', ''],
-    ['Photos created', '=COUNTIFS(' + logs + '!I:I,">0",' + today + ')',
-      'Counts Drive files, not megabytes'],
-    ['Quota used', '=IFERROR(B10/' + PHOTO_QUOTA_PER_DAY + ',0)',
+    ['Retry rate', '=IFERROR(B6/(B4+B6)' + sep + '0)', 'Over 10% - look at the venue network'],
+    ['Errors', '=COUNTIFS(' + col('J') + sep + '"ERROR"' + sep + today + ')',
+      'Any row below is worth reading'],
+    ['Photos created', '=COUNTIFS(' + col('I') + sep + '">0"' + sep + today + ')',
+      'One Drive file each - the only cap this app spends per day'],
+    ['Quota used', '=IFERROR(B9/' + PHOTO_QUOTA_PER_DAY + sep + '0)',
       'Of ' + PHOTO_QUOTA_PER_DAY + '/day on Workspace; 250 on a consumer account'],
-    ['Upload size (MB)', '=ROUND(SUMIFS(' + logs + '!I:I,' + today + ')/1024,1)',
+    ['Upload size (MB)', '=ROUND(SUMIFS(' + col('I') + sep + today + ')/1024' + sep + '1)',
       'Reference only - storage is not the limit'],
-    ['', '', ''],
-    ['THROUGHPUT', '', ''],
-    ['p95 Work (s)', '=IFERROR(PERCENTILE(FILTER(' + logs + '!H:H,' + logs + '!B:B="Submit",'
-      + logs + '!J:J="OK",' + logs + '!A:A>=TODAY()),0.95),0)',
-      'Time spent holding the script lock'],
-    ['Capacity (submits/min)', '=IFERROR(60/B15,0)', 'For the whole deployment, all four files'],
-    ['Burst headroom (judges)', '=IFERROR(INT(30/B15)+1,0)',
+    ['p95 Work (s)',
+      '=IFERROR(PERCENTILE(FILTER(' + col('H') + sep + col('B') + '="Submit"' + sep
+        + col('J') + '="OK"' + sep + col('A') + '>=TODAY())' + sep + '95/100)' + sep + '0)',
+      'Time spent holding the script lock - photos upload before it is taken'],
+    ['Capacity (submits/min)', '=IFERROR(60/B12' + sep + '0)',
+      'For the whole deployment, all four files'],
+    ['Burst headroom (judges)', '=IFERROR(INT(30/B12)+1' + sep + '0)',
       'Submitting at once before one hits the 30s lock timeout'],
-    ['Longest lock wait (s)', '=IFERROR(MAX(FILTER(' + logs + '!G:G,' + logs + '!A:A>=TODAY())),0)',
+    ['Longest lock wait (s)',
+      '=IFERROR(MAX(FILTER(' + col('G') + sep + col('A') + '>=TODAY()))' + sep + '0)',
       'Approaching 30 means the next judge gets refused']
   ];
 
-  const existing = ss.getSheetByName(SHEET_NAME_MONITOR);
-  const index = existing ? existing.getIndex() : 0;
-  if (existing) ss.deleteSheet(existing);
-
-  const sheet = index > 0
-    ? ss.insertSheet(SHEET_NAME_MONITOR, index - 1)
-    : ss.insertSheet(SHEET_NAME_MONITOR);
-
+  sheet.getRange(1, 1, LOG_DASHBOARD_ROWS, 3).clearContent();
   sheet.getRange(1, 1, rows.length, 3).setValues(rows);
 
   sheet.getRange('A1').setFontWeight('bold').setFontSize(13);
   sheet.getRange('A3:C3').setFontWeight('bold');
-  sheet.getRange('A9').setFontWeight('bold');
-  sheet.getRange('A14').setFontWeight('bold');
-  sheet.getRange('B4:B18').setHorizontalAlignment('right');
-  sheet.getRange('C1:C18').setFontColor('#64748b');
+  sheet.getRange('B4:B15').setHorizontalAlignment('right');
+  sheet.getRange('C1:C15').setFontColor('#64748b');
 
-  sheet.getRange('B4').setNumberFormat('0');
-  sheet.getRange('B5').setNumberFormat('0');
-  sheet.getRange('B6').setNumberFormat('0.0%');
-  sheet.getRange('B7').setNumberFormat('0');
-  sheet.getRange('B10').setNumberFormat('0');
-  sheet.getRange('B11').setNumberFormat('0.0%');
-  sheet.getRange('B12').setNumberFormat('0.0');
-  sheet.getRange('B15').setNumberFormat('0.00');
-  sheet.getRange('B16').setNumberFormat('0.0');
-  sheet.getRange('B17').setNumberFormat('0');
-  sheet.getRange('B18').setNumberFormat('0.00');
+  // Column C is narrow because the log's Level column shares it; the hints spill into the
+  // empty cells to their right, which is why nothing else is written in D:L up here.
+  const formats = ['0', '0', '0', '0.0%', '0', '0', '0.0%', '0.0', '0.00', '0.0', '0', '0.00'];
+  formats.forEach(function (format, i) {
+    sheet.getRange(i + 4, 2).setNumberFormat(format);
+  });
 
-  sheet.setColumnWidth(1, 220);
-  sheet.setColumnWidth(2, 130);
-  sheet.setColumnWidth(3, 430);
-  sheet.setFrozenRows(3);
+  sheet.setFrozenRows(LOG_HEADER_ROW);
 
   // Amber says look, red says act. Only the four numbers that can warn before a failure.
   const amber = { background: '#fef7e0', color: '#b45309' };
   const red = { background: '#fce8e6', color: '#b91c1c' };
   // Sheets applies the first rule that matches, so each red threshold has to be listed
   // ahead of its amber one - the other way round, amber would swallow every red value.
-  const rules = [
-    threshold_(sheet.getRange('B7'), 1, red),
-    threshold_(sheet.getRange('B6'), 0.1, amber),
-    threshold_(sheet.getRange('B11'), 0.8, red),
-    threshold_(sheet.getRange('B11'), 0.5, amber),
-    threshold_(sheet.getRange('B18'), 20, red),
-    threshold_(sheet.getRange('B18'), 10, amber)
-  ];
-  sheet.setConditionalFormatRules(rules);
+  sheet.setConditionalFormatRules([
+    threshold_(sheet.getRange('B8'), 1, red),
+    threshold_(sheet.getRange('B7'), 0.1, amber),
+    threshold_(sheet.getRange('B10'), 0.8, red),
+    threshold_(sheet.getRange('B10'), 0.5, amber),
+    threshold_(sheet.getRange('B15'), 20, red),
+    threshold_(sheet.getRange('B15'), 10, amber)
+  ]);
 
   return sheet;
 }
@@ -900,14 +924,20 @@ function threshold_(range, atLeast, style) {
 }
 
 /**
- * Builds the Monitor tab in every level file. Safe to re-run: the tab holds formulas only,
- * so rebuilding it loses nothing. Run from the editor's function dropdown.
+ * Rebuilds the Logs dashboard in every level file, and removes the separate Monitor tab
+ * the dashboard used to live in. Safe to re-run: the block holds formulas only, so
+ * rewriting it loses nothing. Run from the editor's function dropdown.
+ *
+ * A file still on the old layout has its log header in row 1, which no longer matches, so
+ * ensureLogSheet_ archives that tab as 'Logs (old ...)' and starts a clean one. The rows
+ * are kept under that name; only the dashboard needs the new positions.
  */
 function buildMonitorSheets() {
   LEVEL_SHEET_IDS.forEach(function (entry) {
     const ss = SpreadsheetApp.openById(entry[1]);
-    // Guarantees the formulas have a Logs tab to point at rather than resolving to #REF.
-    ensureLogSheet_(ss);
-    buildMonitorSheet_(ss);
+    buildLogDashboard_(ensureLogSheet_(ss));
+
+    const monitor = ss.getSheetByName(SHEET_NAME_MONITOR);
+    if (monitor) ss.deleteSheet(monitor);
   });
 }
