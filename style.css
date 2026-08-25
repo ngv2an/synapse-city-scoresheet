@@ -764,6 +764,16 @@ body {
   color: #1f2b38;
 }
 
+/* Sits right after the title; the auto margin is what keeps the remove button on the edge. */
+.photo-meta {
+  margin-right: auto;
+  margin-left: 8px;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .btn-remove-photo {
   background: none;
   border: none;
@@ -1144,6 +1154,17 @@ body.timetable-modal-open {
   display: block;
   width: 100%;
   height: auto;
+}
+
+.history-detail-photo-meta {
+  margin: 0;
+  padding: 6px 9px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
 }
 
 /* Footer with Synapse City Logo */

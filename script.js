@@ -78,6 +78,9 @@ const SynapseScoresheet = (() => {
   let currentPhotoDataUrl = '';
   // Smaller copy of the same photo, the one that goes into this device's history
   let currentPhotoThumbUrl = '';
+  // { width, height, bytes } for each of the two, measured once when the photo is taken
+  let currentPhotoInfo = null;
+  let currentPhotoThumbInfo = null;
   // Try: the count the row means, kept in step with the box - typing 0-3 is the same
   // answer as tapping that button, so it lights up either way.
   let tryValue = 0;
@@ -95,6 +98,31 @@ const SynapseScoresheet = (() => {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  /** What the base64 decodes to, which is what travels - not the length of the string. */
+  function dataUrlBytes_(dataUrl) {
+    const base64 = String(dataUrl || '').split(',')[1] || '';
+    if (!base64) return 0;
+
+    const padding = (base64.match(/=+$/) || [''])[0].length;
+    return Math.max(0, Math.floor(base64.length * 3 / 4) - padding);
+  }
+
+  function formatBytes_(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + ' B';
+
+    const kb = bytes / 1024;
+    return kb < 1024 ? Math.round(kb) + ' KB' : (kb / 1024).toFixed(1) + ' MB';
+  }
+
+  /** "1280 × 960 · 248 KB", or '' for a photo that was never measured. */
+  function formatPhotoInfo_(info) {
+    if (!info || !info.width || !info.height) return '';
+
+    const size = formatBytes_(info.bytes);
+    return info.width + ' × ' + info.height + (size ? ' · ' + size : '');
   }
 
   function getActiveSheetId() {
@@ -313,7 +341,9 @@ const SynapseScoresheet = (() => {
       scores: Object.assign({}, scoreState),
       leanbots: Object.assign({}, leanbotState),
       hasPhoto: !!submission.photoBase64,
-      photo: currentPhotoThumbUrl
+      photo: currentPhotoThumbUrl,
+      photoInfo: currentPhotoInfo ? Object.assign({}, currentPhotoInfo) : null,
+      photoPreview: currentPhotoThumbInfo ? Object.assign({}, currentPhotoThumbInfo) : null
     };
   }
 
@@ -413,6 +443,10 @@ const SynapseScoresheet = (() => {
       ['Photo', !entry.hasPhoto ? 'None' : (photoUrl ? 'Included in Sheet submission' : 'In Sheet only')]
     ];
 
+    // What went to the Sheet, which is not the smaller copy displayed below.
+    const sentInfo = formatPhotoInfo_(entry.photoInfo);
+    if (sentInfo) fields.push(['Photo Size', sentInfo]);
+
     if (entry.row) fields.push(['Sheet Row', entry.row]);
     if (entry.submissionId) fields.push(['Submission ID', entry.submissionId]);
 
@@ -434,10 +468,15 @@ const SynapseScoresheet = (() => {
         + escapeHtml(value) + '</td></tr>';
     }).join('');
 
+    const previewInfo = formatPhotoInfo_(entry.photoPreview);
     const photoHtml = photoUrl
       ? '<h3>Mission Photo</h3><div class="history-detail-photo"><img src="'
         + escapeHtml(photoUrl) + '" alt="Mission photo for '
-        + escapeHtml(entry.team || 'this run') + '"></div>'
+        + escapeHtml(entry.team || 'this run') + '">'
+        + (previewInfo
+          ? '<p class="history-detail-photo-meta">Local copy · ' + escapeHtml(previewInfo) + '</p>'
+          : '')
+        + '</div>'
       : '';
 
     return '<div class="history-detail-grid">' + fieldHtml + '</div>'
@@ -690,9 +729,21 @@ const SynapseScoresheet = (() => {
     if (photoInput) photoInput.value = '';
     currentPhotoDataUrl = '';
     currentPhotoThumbUrl = '';
+    currentPhotoInfo = null;
+    currentPhotoThumbInfo = null;
+    renderPhotoMeta_();
   }
 
-  /** Takes the camera File, or a data URL already produced by this same function. */
+  function renderPhotoMeta_() {
+    const el = document.getElementById('photo-meta');
+    if (el) el.textContent = formatPhotoInfo_(currentPhotoInfo);
+  }
+
+  /**
+   * Takes the camera File, or a data URL already produced by this same function, and
+   * resolves { dataUrl, width, height, bytes } - the canvas already knows the size it
+   * wrote, so measuring here costs nothing and saves decoding the result again to ask.
+   */
   function compressImage(source, maxSize = 1280, quality = 0.7) {
     return new Promise((resolve, reject) => {
       const isFile = typeof source !== 'string';
@@ -709,7 +760,14 @@ const SynapseScoresheet = (() => {
         canvas.height = Math.round(img.height * scale);
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         release();
-        resolve(canvas.toDataURL('image/jpeg', quality));
+
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve({
+          dataUrl: dataUrl,
+          width: canvas.width,
+          height: canvas.height,
+          bytes: dataUrlBytes_(dataUrl)
+        });
       };
 
       img.onerror = () => {
@@ -1460,25 +1518,29 @@ const SynapseScoresheet = (() => {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
 
-        compressImage(file).then((dataUrl) => {
-          currentPhotoDataUrl = dataUrl;
+        compressImage(file).then((photo) => {
+          currentPhotoDataUrl = photo.dataUrl;
+          currentPhotoInfo = { width: photo.width, height: photo.height, bytes: photo.bytes };
+          renderPhotoMeta_();
 
           const previewImg = document.getElementById('photo-preview');
           const container = document.getElementById('photo-container');
           if (previewImg && container) {
-            previewImg.src = dataUrl;
+            previewImg.src = photo.dataUrl;
             container.style.display = 'block';
             container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           }
 
           // Downscaled off the finished photo rather than the file, so it costs one
           // cheap decode - and a failure here only means history shows no picture.
-          return compressImage(dataUrl, HISTORY_PHOTO_MAX_SIZE, HISTORY_PHOTO_QUALITY)
+          return compressImage(photo.dataUrl, HISTORY_PHOTO_MAX_SIZE, HISTORY_PHOTO_QUALITY)
             .then((thumb) => {
-              currentPhotoThumbUrl = thumb;
+              currentPhotoThumbUrl = thumb.dataUrl;
+              currentPhotoThumbInfo = { width: thumb.width, height: thumb.height, bytes: thumb.bytes };
             })
             .catch(() => {
               currentPhotoThumbUrl = '';
+              currentPhotoThumbInfo = null;
             });
         }).catch((err) => {
           setSubmitStatus(err.message, 'error');
