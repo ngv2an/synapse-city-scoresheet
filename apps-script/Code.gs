@@ -89,37 +89,83 @@ const LEVEL_SHEET_IDS = [
   ['Master', '1fuRBaq0HJ3_w8JRM4wgEN5KhbK534XcDs6gnqGDal4o']
 ];
 
-// Rows 1-8 above: everything this script actually reads back out of the tab.
-const CONFIG_BLOCK_ROWS = 8;
+// Judge and Team entries start on this row, one blank row under their headers.
+const CONFIG_ENTRY_START_ROW = 6;
+// Sample files show three teams; a real one is as long as its longest list.
+const CONFIG_SAMPLE_ENTRIES = 3;
+// Blank rows between the config block and the Explorer link directory.
+const CONFIG_DIRECTORY_GAP = 3;
+
+const CONFIG_SAMPLE = {
+  competition: 'AIROC Vietnam 2026 testing',
+  competitionDate: '25/08/2026',
+  round1: '09:00:00',
+  round2: '13:00:00',
+  endTime: '15:00:00'
+};
+
+function findRoundTime_(rounds, number) {
+  const match = (rounds || []).filter(function (item) { return Number(item.round) === number; })[0];
+  return match ? match.time : '';
+}
 
 /**
- * Builds the tab contents for one file. Sample judge and team names carry the level so a
- * freshly seeded file never looks like it belongs to a different one.
+ * Builds the tab contents for one file. Pass the config read out of an existing tab to keep
+ * what the organisers typed - every value is carried across and only the arrangement
+ * changes. Pass nothing and the sample values stand in, carrying the level in their names
+ * so a freshly seeded file never looks like it belongs to a different one.
+ *
+ * Returns the grid plus the two row numbers the caller needs for formatting, because both
+ * move once a file has more judges or teams than the sample.
  */
-function buildConfigTemplate_(levelTitle, sheetId) {
-  const rows = [
-    ['Level', levelTitle, '', '*** Config Source ***', SHEET_URL_PREFIX + sheetId, ''],
-    ['', '', '', '', '', ''],
-    ['', '', '', 'Competition Name', 'AIROC Vietnam 2026 testing', ''],
-    ['Judge', 'Team', '', 'Competition Date', '25/08/2026', ''],
-    ['', '', '', 'Round 1 Time', '09:00:00', ''],
-    [levelTitle + ' Judge A', levelTitle + ' Team 10', '', 'Round 2 Time', '13:00:00', ''],
-    ['', levelTitle + ' Team 11', '', 'End Time', '15:00:00', ''],
-    ['', levelTitle + ' Team 12', '', '', '', '']
-  ];
+function buildConfigTemplate_(levelTitle, sheetId, config) {
+  const source = config || {};
+  const judges = Array.isArray(source.judges) ? source.judges : [];
+  const teams = Array.isArray(source.teams) ? source.teams : [];
+  const entries = Math.max(judges.length, teams.length, CONFIG_SAMPLE_ENTRIES);
+  const blockRows = CONFIG_ENTRY_START_ROW - 1 + entries;
 
-  if (levelTitle !== 'Explorer') return rows;
+  const rows = [];
+  for (let r = 0; r < blockRows; r++) rows.push(['', '', '', '', '', '']);
 
-  rows.push(['', '', '', '', '', '']);
-  rows.push(['', '', '', '', '', '']);
-  rows.push(['', '', '', '', '', '']);
+  rows[0][0] = 'Level';
+  rows[0][1] = levelTitle;
+  rows[0][3] = '*** Config Source ***';
+  rows[0][4] = SHEET_URL_PREFIX + sheetId;
+
+  rows[2][3] = 'Competition Name';
+  rows[2][4] = source.competition || CONFIG_SAMPLE.competition;
+  rows[3][0] = 'Judge';
+  rows[3][1] = 'Team';
+  rows[3][3] = 'Competition Date';
+  rows[3][4] = source.competitionDate || CONFIG_SAMPLE.competitionDate;
+  rows[4][3] = 'Round 1 Time';
+  rows[4][4] = findRoundTime_(source.rounds, 1) || CONFIG_SAMPLE.round1;
+  rows[5][3] = 'Round 2 Time';
+  rows[5][4] = findRoundTime_(source.rounds, 2) || CONFIG_SAMPLE.round2;
+  rows[6][3] = 'End Time';
+  rows[6][4] = source.endTime || CONFIG_SAMPLE.endTime;
+
+  for (let i = 0; i < entries; i++) {
+    const row = rows[CONFIG_ENTRY_START_ROW - 1 + i];
+    row[0] = judges[i] || (config ? '' : (i === 0 ? levelTitle + ' Judge A' : ''));
+    row[1] = teams[i] || (config ? '' : levelTitle + ' Team 1' + i);
+  }
+
+  if (levelTitle !== 'Explorer') {
+    return { rows: rows, blockRows: blockRows, directoryRow: 0 };
+  }
+
+  for (let g = 0; g < CONFIG_DIRECTORY_GAP; g++) rows.push(['', '', '', '', '', '']);
+
+  const directoryRow = rows.length + 1;
   rows.push(['', '', '', '', 'Google Sheet', 'Scoresheet URL']);
 
   LEVEL_SHEET_IDS.forEach(function (entry) {
     rows.push(['', '', '', entry[0], SHEET_URL_PREFIX + entry[1], SCORESHEET_URL_PREFIX + entry[1]]);
   });
 
-  return rows;
+  return { rows: rows, blockRows: blockRows, directoryRow: directoryRow };
 }
 
 // Label in the Config tab -> field name in the JSON reply.
@@ -155,16 +201,37 @@ function doGet(e) {
   }
 }
 
-/** Rewrites the Config tab into the layout above. Run by hand from the editor. */
-function resetConfigSheet() {
-  const ss = SpreadsheetApp.openById(DEFAULT_SHEET_ID);
+/**
+ * Rewrites the Config tab into the layout above. Run by hand from the editor, once per
+ * file: resetConfigSheet('SHEET_ID_OR_URL'), or with no argument for DEFAULT_SHEET_ID.
+ *
+ * Values are carried across - level, competition name and date, both round times, end
+ * time, and the full judge and team lists all come back in their new positions. What does
+ * not survive is anything this script cannot read: notes, colours, extra columns, and any
+ * label it does not recognise. Copy the tab first if the file holds more than config.
+ */
+function resetConfigSheet(sheetId) {
+  const ss = SpreadsheetApp.openById(resolveSheetId_(sheetId));
   const existing = ss.getSheetByName(SHEET_NAME_CONFIG);
+  const carried = existing ? readConfig_(ss) : null;
   // Only the layout is being reset, so the file stays the level it already was - otherwise
-  // resetting a Creator file would quietly reseed it as Explorer, URL directory and all.
-  const levelTitle = existing ? SCORE_LEVEL_TITLES[readConfig_(ss).level] : '';
+  // resetting a Creator file would quietly reseed it as Explorer, link directory and all.
+  const levelTitle = carried ? SCORE_LEVEL_TITLES[carried.level] : '';
 
+  // Guessing here would rebuild the file as the wrong level, and this deletes the tab
+  // before it writes, so refuse instead.
+  if (carried && !levelTitle) {
+    throw new Error(
+      'Config Level must be Explorer, Creator, Innovator, or Master before the tab can be '
+      + 'rebuilt; received "' + carried.level + '".'
+    );
+  }
+
+  // Put it back where it was rather than at the end of the tab strip.
+  const index = existing ? existing.getIndex() : 0;
   if (existing) ss.deleteSheet(existing);
-  createConfigSheet_(ss, levelTitle);
+
+  return createConfigSheet_(ss, levelTitle, carried, index);
 }
 
 function readConfig_(ss) {
@@ -248,25 +315,29 @@ function formatConfigValue_(cell, field, tz) {
   return String(cell).trim();
 }
 
-function createConfigSheet_(ss, levelTitle) {
+function createConfigSheet_(ss, levelTitle, config, index) {
   const level = SCORE_LEVEL_TITLES[String(levelTitle || '').toLowerCase()] || 'Explorer';
-  const template = buildConfigTemplate_(level, ss.getId());
-  const rows = template.length;
-  const cols = template[0].length;
+  const template = buildConfigTemplate_(level, ss.getId(), config);
+  const rows = template.rows.length;
+  const cols = template.rows[0].length;
 
-  const sheet = ss.insertSheet(SHEET_NAME_CONFIG);
+  const sheet = index > 0
+    ? ss.insertSheet(SHEET_NAME_CONFIG, index - 1)
+    : ss.insertSheet(SHEET_NAME_CONFIG);
 
   // Plain text on the value column, set before writing: otherwise Sheets turns dates and
   // times into values and reformats them to whatever the locale prefers. Only the config
   // block needs it - the link rows below are left alone so Sheets can still linkify them.
-  sheet.getRange(1, 5, CONFIG_BLOCK_ROWS, 1).setNumberFormat('@');
-  sheet.getRange(1, 1, rows, cols).setValues(template);
+  sheet.getRange(1, 5, template.blockRows, 1).setNumberFormat('@');
+  sheet.getRange(1, 1, rows, cols).setValues(template.rows);
 
   // Every label lives in column D; Level and the Judge / Team headers are the exceptions.
   sheet.getRange(1, 4, rows, 1).setFontWeight('bold');
   sheet.getRange('A1').setFontWeight('bold');
   sheet.getRange('A4:B4').setFontWeight('bold');
-  if (rows > CONFIG_BLOCK_ROWS) sheet.getRange('E12:F12').setFontWeight('bold');
+  if (template.directoryRow) {
+    sheet.getRange(template.directoryRow, 5, 1, 2).setFontWeight('bold');
+  }
 
   sheet.setColumnWidth(1, 150);
   sheet.setColumnWidth(2, 180);
