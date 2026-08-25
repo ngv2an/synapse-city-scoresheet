@@ -26,6 +26,32 @@ body {
   margin: 0 auto;
 }
 
+/* Do not flash default level/config data while the Sheet request is still pending. */
+.scoresheet-app.is-config-loading > :not(.config-loading) {
+  display: none;
+}
+
+.scoresheet-app:not(.is-config-loading) > .config-loading {
+  display: none;
+}
+
+.config-loading {
+  margin-top: 8px;
+  padding: 24px 16px;
+  border: 1px solid #cfd7e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1e40af;
+  font-size: 16px;
+  font-weight: 800;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(21, 33, 47, 0.08);
+}
+
+.config-loading.is-error {
+  color: #dc2626;
+}
+
 /* One compact vertical panel: every requested item owns one full row. */
 .entry-panel {
   width: 100%;

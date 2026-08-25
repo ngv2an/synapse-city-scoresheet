@@ -46,7 +46,6 @@ const SynapseScoresheet = (() => {
   };
 
   const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
-  const METADATA_KEY_PREFIX = 'scoresheet.metadata.';
   const DRAFT_KEY_PREFIX = 'scoresheet.draft.';
   const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
@@ -524,9 +523,20 @@ const SynapseScoresheet = (() => {
     renderTable();
   }
 
+  function setConfigLoadingState(message, tone) {
+    const app = document.getElementById('scoresheet-app');
+    const status = document.getElementById('config-loading');
+    const isLoading = !!message;
+
+    if (app) app.classList.toggle('is-config-loading', isLoading);
+    if (!status) return;
+
+    status.textContent = message || '';
+    status.className = 'config-loading' + (tone ? ' is-' + tone : '');
+  }
+
   async function loadMetadata() {
     const sheetId = getActiveSheetId();
-    const cacheKey = METADATA_KEY_PREFIX + sheetId;
 
     // Update View Submission link
     const viewLink = document.getElementById('view-submission-link');
@@ -534,23 +544,16 @@ const SynapseScoresheet = (() => {
       viewLink.href = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
     }
 
-    // 1. Load from cache immediately
-    try {
-      const cached = JSON.parse(localStorage.getItem(cacheKey));
-      if (cached) applyMetadata(cached);
-    } catch (e) {}
-
-    // 2. Fetch fresh metadata from Apps Script
+    // Only reveal the scoresheet after a fresh Config response from this Sheet.
     try {
       const data = await SheetSubmit.fetchMetadata(sheetId);
-      if (data && data.ok) {
-        applyMetadata(data);
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(data));
-        } catch (e) {}
-      }
+      if (!data || !data.ok) throw new Error(data && data.error ? data.error : 'Invalid Config response');
+
+      applyMetadata(data);
+      setConfigLoadingState('', null);
     } catch (err) {
       console.warn('Could not fetch sheet metadata:', err);
+      setConfigLoadingState('Could not load Config. Please reload.', 'error');
     }
   }
 

@@ -11,12 +11,16 @@
 </head>
 
 <body>
-  <main class="scoresheet-app">
+  <main class="scoresheet-app is-config-loading" id="scoresheet-app">
+    <div class="config-loading" id="config-loading" role="status" aria-live="polite">
+      Loading Config...
+    </div>
+
     <!-- Competition and run information, one item per row -->
     <section class="entry-panel">
       <div class="entry-row entry-row-static">
         <span class="entry-label">Competition Name</span>
-        <span class="entry-static-value competition-banner" id="competition-banner">Synapse City</span>
+        <span class="entry-static-value competition-banner" id="competition-banner"></span>
       </div>
 
       <div class="entry-row entry-row-static">
