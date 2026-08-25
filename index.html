@@ -12,8 +12,12 @@
 
 <body>
   <main class="scoresheet-app is-config-loading" id="scoresheet-app">
-    <div class="config-loading" id="config-loading" role="status" aria-live="polite">
-      Loading Config...
+    <div class="config-loading" id="config-loading" role="dialog" aria-modal="true"
+         aria-labelledby="config-loading-text">
+      <div class="config-loading-card">
+        <span class="config-loading-spinner" aria-hidden="true"></span>
+        <span id="config-loading-text" aria-live="polite">Loading Configuration...</span>
+      </div>
     </div>
 
     <!-- General competition information, centered and without visible labels. -->

@@ -748,12 +748,13 @@ const SynapseScoresheet = (() => {
   function setConfigLoadingState(message, tone) {
     const app = document.getElementById('scoresheet-app');
     const status = document.getElementById('config-loading');
+    const text = document.getElementById('config-loading-text');
     const isLoading = !!message;
 
     if (app) app.classList.toggle('is-config-loading', isLoading);
     if (!status) return;
 
-    status.textContent = message || '';
+    if (text) text.textContent = message || '';
     status.className = 'config-loading' + (tone ? ' is-' + tone : '');
   }
 
@@ -923,9 +924,16 @@ const SynapseScoresheet = (() => {
   /** One Sheet ID means one level, so this is the only thing that can change it. */
   function applyConfiguredLevel(level) {
     const key = String(level || '').toLowerCase();
-    if (!LEVELS[key] || key === activeLevel) return;
+    if (!LEVELS[key]) return;
+    if (key === activeLevel) {
+      renderLevel();
+      return;
+    }
     // Switching level rebuilds the block list, which would throw away a run in progress.
-    if (getTotalScore() > 0) return;
+    if (getTotalScore() > 0) {
+      renderLevel();
+      return;
+    }
 
     activeLevel = key;
     initScoreState();
@@ -1349,7 +1357,6 @@ const SynapseScoresheet = (() => {
     initScoreState();
     restoreDraft();
     renderTable();
-    renderLevel();
     renderTryButtons();
     renderSubmissionHistory_();
     setupEvents();
