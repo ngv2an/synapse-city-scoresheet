@@ -973,7 +973,11 @@ body.error-modal-open {
   width: min(100%, 560px);
 }
 
+/* min-height:0 so a long stack scrolls inside the dialog instead of being clipped
+   by the flex column's automatic minimum size on older WebKit. */
 .error-content {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px;
 }

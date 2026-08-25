@@ -153,12 +153,58 @@ const SynapseScoresheet = (() => {
   }
 
   /**
+   * V8 opens a stack with "Name: message"; Safari and Firefox start straight at the
+   * frames, so put the message back when it is missing.
+   */
+  function stackTextOf_(err) {
+    const stack = err && err.stack ? String(err.stack).trim() : '';
+    if (!stack) return '';
+
+    const message = errorMessageOf_(err);
+    return stack.indexOf(message) === 0 ? stack : message + '\n' + stack;
+  }
+
+  /**
+   * The trace as thrown, followed by every `cause` chained behind it. A thrown
+   * non-Error carries no stack at all, so fall back to where it surfaced instead.
+   */
+  function buildStackSections_(err) {
+    const sections = [];
+    const seen = [];
+    let current = err;
+
+    while (current && typeof current === 'object' && seen.indexOf(current) === -1 && seen.length < 5) {
+      seen.push(current);
+
+      const text = stackTextOf_(current);
+      if (text) sections.push((seen.length === 1 ? 'Stack:' : 'Caused by:') + '\n' + text);
+      current = current.cause;
+    }
+
+    if (!sections.length) {
+      const here = safely_(() => String(new Error('trace').stack || '').trim());
+      if (here !== '-') sections.push('Stack (thrown value had none - this is where it surfaced):\n' + here);
+    }
+
+    return sections;
+  }
+
+  /** A cross-origin or parse error arrives with no Error object; keep the location. */
+  function errorFromEvent_(e) {
+    if (!e || !e.message) return e || 'Unknown error';
+
+    const at = e.filename
+      ? ' (' + e.filename + ':' + (e.lineno || '?') + ':' + (e.colno || '?') + ')'
+      : '';
+    return String(e.message) + at;
+  }
+
+  /**
    * Everything the organiser would otherwise have to ask for, in one block a judge can
    * screenshot: what broke, where, and which device and run it happened on.
    */
   function buildErrorReport_(context, err) {
     const now = new Date();
-    const stack = err && err.stack ? String(err.stack) : '';
 
     const lines = [
       'When   : ' + now.toLocaleString(),
@@ -175,8 +221,9 @@ const SynapseScoresheet = (() => {
       'Browser: ' + safely_(() => navigator.userAgent)
     ];
 
-    // The top frames say where it came from; the rest is noise on a phone screen.
-    if (stack) lines.push('', stack.split('\n').slice(0, 8).join('\n'));
+    // The whole trace, not just the top frames: the dialog scrolls, and a stack cut
+    // short is the one thing an organiser cannot reconstruct after the fact.
+    buildStackSections_(err).forEach((section) => lines.push('', section));
     return lines.join('\n');
   }
 
@@ -1850,7 +1897,7 @@ const SynapseScoresheet = (() => {
   /** Nothing else has to remember to report: whatever escapes a handler lands here. */
   function installErrorReporting_() {
     window.addEventListener('error', (e) => {
-      showError_('Uncaught error', e.error || e.message || e);
+      showError_('Uncaught error', e.error || errorFromEvent_(e));
     });
 
     window.addEventListener('unhandledrejection', (e) => {
