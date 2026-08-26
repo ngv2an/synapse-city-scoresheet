@@ -1667,6 +1667,29 @@ const SynapseScoresheet = (() => {
     return Array.isArray(teamRoster[judge]) ? teamRoster[judge] : [];
   }
 
+  /**
+   * Teams this device has already scored in the round now running.
+   *
+   * Scoped to the round on purpose: a team scores once per round, so without the scope
+   * every team would be marked from Round 2 onward and the warning would mean nothing.
+   * A run that failed to send is not counted - that one still has to be done. Nor is the
+   * test team, which exists to be submitted over and over.
+   */
+  function submittedTeamsThisRound_() {
+    const done = {};
+    const state = resolveRound(new Date());
+    const round = state && state.current ? String(state.current.round) : '';
+    if (!round) return done;
+
+    readSubmissionHistory_().forEach((entry) => {
+      if (!entry || entry.status === 'failed') return;
+      if (String(entry.round) !== round) return;
+      if (entry.team && entry.team !== TEST_TEAM) done[entry.team] = true;
+    });
+
+    return done;
+  }
+
   /** Rebuilt whenever the judge changes, keeping the current pick only if it survives. */
   function renderTeamOptions_() {
     const teamSelect = document.getElementById('team-select');
@@ -1678,9 +1701,13 @@ const SynapseScoresheet = (() => {
       .filter((t) => t !== TEST_TEAM)
       .concat([TEST_TEAM]);
 
+    // The suffix is on the label only. The value stays the bare team, so nothing further
+    // down - draft, history, the row on the Sheet - ever sees it.
+    const submitted = submittedTeamsThisRound_();
     let opts = '<option value="">-- Select Team ID --</option>';
     teams.forEach((t) => {
-      opts += `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`;
+      const label = submitted[t] ? t + ' - submitted' : t;
+      opts += `<option value="${escapeHtml(t)}">${escapeHtml(label)}</option>`;
     });
     teamSelect.innerHTML = opts;
     teamSelect.value = optionExists(teamSelect, currentVal) ? currentVal : '';
@@ -1871,6 +1898,8 @@ const SynapseScoresheet = (() => {
       setSubmitLoadingState(false);
       btn.disabled = false;
       btn.textContent = 'Submit';
+      // The team just scored now carries the marker, whichever way the run ended up.
+      renderTeamOptions_();
     }
   }
 
@@ -2024,6 +2053,17 @@ const SynapseScoresheet = (() => {
       teamSelect.addEventListener('change', () => {
         const nextTeam = teamSelect.value;
         const selectedNewTeam = !!nextTeam && nextTeam !== restoredTeam;
+
+        // Picking one already scored this round is usually a mistap on a list where the
+        // wanted team sits next to a finished one, so it has to be said out loud. Backing
+        // out restores the previous pick rather than clearing the run in progress.
+        if (selectedNewTeam && submittedTeamsThisRound_()[nextTeam] && !window.confirm(
+          '"' + nextTeam + '" has already been submitted this round.\n\nScore it again?'
+        )) {
+          teamSelect.value = restoredTeam;
+          return;
+        }
+
         restoredTeam = nextTeam;
 
         if (selectedNewTeam) resetRunState();
