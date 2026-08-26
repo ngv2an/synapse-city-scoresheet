@@ -23,9 +23,17 @@ const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
 const LEGACY_SHEET_NAME_SCORES = 'Scores';
 const SCORE_SHEET_PREFIX = 'Scores - ';
 const SHEET_NAME_CONFIG = 'Config';
-const SHEET_NAME_LOGS = 'Logs';
-// Kept only so the rebuild can delete the tab the dashboard used to live in.
-const SHEET_NAME_MONITOR = 'Monitor';
+/**
+ * Every level's log lives in one workbook, one tab each, rather than in the level file it
+ * describes. A run that cannot open its own Sheet - wrong ID, revoked access - still has
+ * somewhere to be recorded; that failure used to go unlogged, because the log went into
+ * the very file that would not open.
+ */
+const LOG_SHEET_ID = '17e00abEl3_EUAiMr4sxqAlNlyvuTjXYO9pfsW-eg528';
+const LOG_SHEET_PREFIX = 'Logs - ';
+// Where a run lands when its level cannot be worked out: a sheetId outside LEVEL_SHEET_IDS,
+// or a failure early enough that Config was never read. Created only when something needs it.
+const LOG_SHEET_OTHER = 'Logs - Other';
 
 /**
  * The dashboard sits on top of the log rows in the one Logs tab, so the header is no
@@ -222,16 +230,17 @@ const CONFIG_TEAM_HEADERS = ['team', 'teams', 'team id', 'team name'];
  */
 function doGet(e) {
   const startTime = Date.now();
-  let ss = null;
+  let sheetId = '';
 
   try {
-    const sheetId = resolveSheetId_(e && e.parameter ? (e.parameter.sheetId || e.parameter.link) : '');
-    ss = SpreadsheetApp.openById(sheetId);
+    sheetId = resolveSheetId_(e && e.parameter ? (e.parameter.sheetId || e.parameter.link) : '');
+    const ss = SpreadsheetApp.openById(sheetId);
     const config = readConfig_(ss);
 
     // Config reads take no lock, so all of it is work.
-    logActivity_(ss, {
+    logActivity_({
       action: 'Config',
+      sheetId: sheetId,
       level: SCORE_LEVEL_TITLES[config.level] || config.level,
       total: secondsSince_(startTime),
       status: 'OK'
@@ -240,14 +249,15 @@ function doGet(e) {
     return json(Object.assign({ ok: true, sheetId: sheetId }, config));
 
   } catch (err) {
-    if (ss) {
-      logActivity_(ss, {
-        action: 'Config',
-        total: secondsSince_(startTime),
-        status: 'ERROR',
-        error: String(err)
-      });
-    }
+    // No longer conditional on the Sheet having opened: the log is its own workbook now,
+    // and a request that never reached its Sheet is exactly the one worth recording.
+    logActivity_({
+      action: 'Config',
+      sheetId: sheetId,
+      total: secondsSince_(startTime),
+      status: 'ERROR',
+      error: String(err)
+    });
     return json({ ok: false, error: String(err) });
   }
 }
@@ -432,6 +442,7 @@ function doPost(e) {
   let targetSs = null;
   let body = null;
   let id = '';
+  let sheetId = '';
   let photoSizeKb = 0;
   let levelTitle = '';
   let waitStart = 0;
@@ -449,7 +460,7 @@ function doPost(e) {
 
     // Opened before the cache check so a duplicate has somewhere to be recorded. A retry
     // is a real execution against the quota, and its rate is the first sign of a bad link.
-    const sheetId = resolveSheetId_(body.sheetId || body.link);
+    sheetId = resolveSheetId_(body.sheetId || body.link);
     targetSs = SpreadsheetApp.openById(sheetId);
 
     // Deduplication via cache
@@ -458,6 +469,7 @@ function doPost(e) {
     if (cachedRow) {
       pending = {
         action: 'Submit',
+        sheetId: sheetId,
         judge: body.judge || '',
         team: body.team || '',
         total: secondsSince_(startTime),
@@ -513,6 +525,7 @@ function doPost(e) {
 
     pending = {
       action: 'Submit',
+      sheetId: sheetId,
       level: levelTitle,
       judge: body.judge || '',
       team: body.team || '',
@@ -529,6 +542,7 @@ function doPost(e) {
   } catch (err) {
     pending = {
       action: 'Submit',
+      sheetId: sheetId,
       level: levelTitle,
       judge: body ? body.judge : '',
       team: body ? body.team : '',
@@ -548,7 +562,7 @@ function doPost(e) {
     // Release first: bookkeeping for one run must not hold up the next. The lock is shared
     // by every spreadsheet on this deployment, so anything left inside it costs everyone.
     lock.releaseLock();
-    if (targetSs && pending) logActivity_(targetSs, pending);
+    if (pending) logActivity_(pending);
   }
 }
 
@@ -740,23 +754,40 @@ function logNumber_(value) {
   return value === undefined || value === null || value === '' ? '' : Number(value);
 }
 
+/** Maps a Sheet ID back to its level name, so a failed run still lands on the right tab. */
+function levelTitleForSheet_(sheetId) {
+  const match = LEVEL_SHEET_IDS.filter(function (entry) { return entry[1] === sheetId; })[0];
+  return match ? match[0] : '';
+}
+
 /**
- * Returns the Logs tab, creating it when missing. A tab left over from an older column
- * order is renamed rather than appended to: the two orders cannot share one sheet, and
- * charting a column that means two different things is worse than losing the old rows.
+ * Which tab in the log workbook this entry belongs on. Level comes from Config when the
+ * run got that far and from the Sheet ID when it did not: a duplicate answered from cache
+ * never reads Config, and neither does a run whose Sheet would not open.
  */
-function ensureLogSheet_(ss) {
-  let sheet = ss.getSheetByName(SHEET_NAME_LOGS);
+function logSheetName_(entry) {
+  const level = String(entry.level || levelTitleForSheet_(entry.sheetId || '')).toLowerCase();
+  return SCORE_LEVEL_TITLES[level] ? LOG_SHEET_PREFIX + SCORE_LEVEL_TITLES[level] : LOG_SHEET_OTHER;
+}
+
+/**
+ * Returns one level's tab in the log workbook, creating it when missing. A tab left over
+ * from an older column order is renamed rather than appended to: the two orders cannot
+ * share one sheet, and charting a column that means two different things is worse than
+ * losing the old rows.
+ */
+function ensureLogSheet_(logSs, name) {
+  let sheet = logSs.getSheetByName(name);
 
   if (sheet) {
     const header = sheet.getRange(LOG_HEADER_ROW, 1, 1, HEADERS_LOGS.length).getValues()[0].join('|');
     if (header === HEADERS_LOGS.join('|')) return sheet;
 
-    const stamp = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd HHmm');
-    sheet.setName(SHEET_NAME_LOGS + ' (old ' + stamp + ')');
+    const stamp = Utilities.formatDate(new Date(), logSs.getSpreadsheetTimeZone(), 'yyyy-MM-dd HHmm');
+    sheet.setName(name + ' (old ' + stamp + ')');
   }
 
-  sheet = ss.insertSheet(SHEET_NAME_LOGS);
+  sheet = logSs.insertSheet(name);
   sheet.getRange(LOG_HEADER_ROW, 1, 1, HEADERS_LOGS.length)
     .setValues([HEADERS_LOGS])
     .setFontWeight('bold');
@@ -771,21 +802,21 @@ function ensureLogSheet_(ss) {
 }
 
 /**
- * Records system usage metrics into the Logs tab for live monitoring.
+ * Records system usage metrics into the log workbook for live monitoring.
  *
- * Call this outside the script lock. It writes to the same file the run just wrote to, so
- * holding the lock across it would add two writes to the one section every submit queues
- * behind - and the durations it records would then be measuring its own cost.
+ * Call this outside the script lock. It opens a second spreadsheet and writes to it, so
+ * holding the lock across it would add that whole round trip to the one section every
+ * submit queues behind - and the durations it records would then be measuring its own cost.
  */
-function logActivity_(ss, entry) {
+function logActivity_(entry) {
   try {
-    if (!ss || !entry) return;
-    const sheet = ensureLogSheet_(ss);
+    if (!entry) return;
+    const sheet = ensureLogSheet_(SpreadsheetApp.openById(LOG_SHEET_ID), logSheetName_(entry));
 
     sheet.appendRow([
       new Date(),
       entry.action || 'Submit',
-      entry.level || '',
+      entry.level || levelTitleForSheet_(entry.sheetId || ''),
       entry.judge || '',
       entry.team || '',
       logNumber_(entry.total),
@@ -847,7 +878,8 @@ function buildLogDashboard_(sheet) {
   // Decimals are written as fractions on purpose: '0.95' is a parse error wherever ','
   // is the decimal point, while 95/100 reads the same in every locale.
   const rows = [
-    ['Logs', '', 'Dashboard above, log rows from ' + first + ' down. Rebuild with buildMonitorSheets().'],
+    [sheet.getName(), '', 'Dashboard above, log rows from ' + first
+      + ' down. Rebuild with buildMonitorSheets().'],
     ['', '', ''],
     ['TODAY', 'Value', 'Watch'],
     ['Submissions',
@@ -924,20 +956,45 @@ function threshold_(range, atLeast, style) {
 }
 
 /**
- * Rebuilds the Logs dashboard in every level file, and removes the separate Monitor tab
- * the dashboard used to live in. Safe to re-run: the block holds formulas only, so
- * rewriting it loses nothing. Run from the editor's function dropdown.
+ * Creates or rebuilds the four level tabs in the log workbook. Safe to re-run: the
+ * dashboard block holds formulas only, so rewriting it loses nothing. Run from the
+ * editor's function dropdown.
  *
- * A file still on the old layout has its log header in row 1, which no longer matches, so
- * ensureLogSheet_ archives that tab as 'Logs (old ...)' and starts a clean one. The rows
- * are kept under that name; only the dashboard needs the new positions.
+ * The level files keep no log of their own once this has run; removeLegacyLogSheets()
+ * clears out what they were left holding.
  */
 function buildMonitorSheets() {
+  const logSs = SpreadsheetApp.openById(LOG_SHEET_ID);
+
+  LEVEL_SHEET_IDS.forEach(function (entry) {
+    buildLogDashboard_(ensureLogSheet_(logSs, LOG_SHEET_PREFIX + entry[0]));
+  });
+}
+
+/**
+ * Deletes the log tabs left behind in the four level files. The log moved to its own
+ * workbook, so nothing writes to these any more and their dashboards read zero, which is
+ * worse than not being there at all - a judge checking mid-competition would see a file
+ * reporting no submissions. Run once from the editor's function dropdown.
+ *
+ * Takes 'Logs', every 'Logs (old ...)' archive, and the 'Monitor' tab the dashboard lived
+ * in before it moved into Logs. Nothing else is touched, and nothing is copied out first:
+ * the rows in those tabs are gone for good. Returns what it removed.
+ */
+function removeLegacyLogSheets() {
+  const removed = [];
+
   LEVEL_SHEET_IDS.forEach(function (entry) {
     const ss = SpreadsheetApp.openById(entry[1]);
-    buildLogDashboard_(ensureLogSheet_(ss));
 
-    const monitor = ss.getSheetByName(SHEET_NAME_MONITOR);
-    if (monitor) ss.deleteSheet(monitor);
+    ss.getSheets()
+      .filter(function (sheet) { return /^(Logs|Monitor)\b/.test(sheet.getName()); })
+      .forEach(function (sheet) {
+        removed.push(entry[0] + ': ' + sheet.getName());
+        ss.deleteSheet(sheet);
+      });
   });
+
+  console.log(removed.length ? removed.join('\n') : 'Nothing to remove.');
+  return removed;
 }

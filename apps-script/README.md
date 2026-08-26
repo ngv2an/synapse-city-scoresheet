@@ -10,15 +10,15 @@ contain only competition data; they do not need their own Apps Script deployment
 ## One-time setup
 
 1. Create a **standalone** Apps Script project at <https://script.google.com/>.
-2. Paste `Code.gs` into that project and set `DEFAULT_SHEET_ID`, `SHARED_KEY`, and
-   `DRIVE_FOLDER_ID`.
+2. Paste `Code.gs` into that project and set `DEFAULT_SHEET_ID`, `SHARED_KEY`,
+   `DRIVE_FOLDER_ID`, and `LOG_SHEET_ID`.
 3. Deploy it as a Web App:
    - Execute as: **Me**
    - Who has access: **Anyone**
 4. Put the deployment `/exec` URL and the same key in `submit.js`.
 5. Make sure the Google account that deployed the Web App has **Editor** access to every
-   spreadsheet that the app will use. Copies owned by another account must be shared back
-   to the deploying account.
+   spreadsheet that the app will use, the log workbook included. Copies owned by another
+   account must be shared back to the deploying account.
 
 ## Create a competition copy
 
@@ -34,6 +34,31 @@ contain only competition data; they do not need their own Apps Script deployment
 
 The frontend includes that ID in metadata and submission requests. The central Web App
 uses `SpreadsheetApp.openById()` to read and write the correct copy.
+
+## The log workbook
+
+Every request is logged to one separate workbook, `LOG_SHEET_ID`, with one tab per level:
+`Logs - Explorer`, `Logs - Creator`, `Logs - Innovator`, `Logs - Master`. Each tab carries
+its own dashboard in the top 15 rows, with the log rows from row 18 down.
+
+The log is kept out of the level files on purpose. `logActivity_` used to write into the
+same spreadsheet the run had just opened, so a request that could not open its Sheet at
+all — wrong ID, revoked access — was never logged anywhere. That is the failure most worth
+seeing, and it is now recorded like any other.
+
+Two things follow from the split:
+
+- A row whose level cannot be worked out lands on `Logs - Other`, which is created only
+  when something needs it. A row there means a request arrived carrying a Sheet ID that is
+  not in `LEVEL_SHEET_IDS`.
+- The four level files keep no log of their own. `removeLegacyLogSheets()` deletes the
+  `Logs` tab, every `Logs (old ...)` archive, and the leftover `Monitor` tab from each of
+  them. Nothing is copied out first — those rows are gone for good. Left in place they
+  would be worse than absent: their dashboards read zero, so a file checked mid-competition
+  would report no submissions at all.
+
+Run `buildMonitorSheets()` once from the editor to create the four tabs, then
+`removeLegacyLogSheets()` once to clear the old tabs out of the level files.
 
 ## Publish an update
 
