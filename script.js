@@ -97,6 +97,17 @@ const SynapseScoresheet = (() => {
     demo: ' is-demo'
   };
 
+  // One glyph per outcome, with the label a screen reader and a tooltip both read. Sending
+  // is drawn by CSS as a turning ring, so it is the one state with no character of its own.
+  const HISTORY_STATUS_ICONS = {
+    sending: ['', 'Sending'],
+    queued: ['⧗', 'Saved offline'],
+    failed: ['✕', 'Not sent'],
+    demo: ['•', 'Demo run']
+  };
+  // Anything else reached the Sheet and was acknowledged.
+  const HISTORY_STATUS_ICON_SENT = ['✓', 'Submitted'];
+
   // The Sheet decides the level, so this only ever changes from the Config tab.
   let activeLevel = 'creator';
   // Kept around because the round is re-derived from the clock on a timer, not rendered once.
@@ -680,6 +691,8 @@ const SynapseScoresheet = (() => {
     tableWrap.hidden = entries.length === 0;
 
     body.innerHTML = entries.map((entry) => {
+      const status = HISTORY_STATUS_ICONS[entry.status] ? entry.status : 'submitted';
+      const icon = HISTORY_STATUS_ICONS[entry.status] || HISTORY_STATUS_ICON_SENT;
       const statusClass = HISTORY_STATUS_CLASSES[entry.status] || '';
       const round = entry.round === '' || entry.round === undefined ? '-' : entry.round;
       const total = Number.isFinite(Number(entry.totalScore)) ? Number(entry.totalScore) : 0;
@@ -692,6 +705,9 @@ const SynapseScoresheet = (() => {
         + '<td>' + escapeHtml(round) + '</td>'
         + '<td>' + escapeHtml(entry.team || '-') + '</td>'
         + '<td>' + escapeHtml(total) + '</td>'
+        + '<td><span class="history-status is-' + status + '" role="img" aria-label="'
+        + escapeHtml(icon[1]) + '" title="' + escapeHtml(icon[1]) + '">' + icon[0]
+        + '</span></td>'
         + '</tr>';
     }).join('');
   }

@@ -930,6 +930,38 @@ body {
   width: auto;
 }
 
+/* Status holds one glyph, so it shrinks onto the header word the same way. */
+.history-table th:nth-child(5),
+.history-table td:nth-child(5) {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.history-status {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.history-status.is-submitted { color: #15803d; }
+.history-status.is-queued { color: #b45309; }
+.history-status.is-failed { color: #b91c1c; }
+.history-status.is-demo { color: #64748b; }
+
+/* Sending is the loading card's ring, shrunk to sit on a table row and borrowing the
+   same keyframes rather than declaring a second identical rotation. */
+.history-status.is-sending {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #c7d2fe;
+  border-top-color: #4338ca;
+  border-radius: 50%;
+  animation: config-loading-spin 0.8s linear infinite;
+  vertical-align: -1px;
+}
+
 .history-entry {
   color: #1f2b38;
   font-weight: 700;
