@@ -1337,26 +1337,25 @@ const SynapseScoresheet = (() => {
 
   /**
    * The round is read off the device clock, so a tablet left on the wrong date reports a
-   * wrong round and says nothing about it. This makes that impossible to miss; Submit also
-   * uses the same date check and blocks the run until the device clock is corrected.
+   * wrong round and says nothing about it. Putting the error where the date belongs makes
+   * that impossible to miss; Submit also uses the same date check and blocks the run until
+   * the device clock is corrected.
    */
-  function renderDateWarning() {
-    const el = document.getElementById('date-warning');
+  function renderCompetitionDate() {
+    const el = document.getElementById('meta-date');
     if (!el) return;
 
     const expected = parseConfigDate(competitionInfo.competitionDate);
-    if (!expected) {
-      el.textContent = '';
-      return;
-    }
+    const wrongDate = !!expected && !isCompetitionDate(new Date(), expected);
 
-    const now = new Date();
-    el.textContent = isCompetitionDate(now, expected) ? '' : getCompetitionDateError();
+    // A date this cannot parse still goes up as typed; only the clock check reports here.
+    el.textContent = wrongDate ? getCompetitionDateError() : competitionInfo.competitionDate;
+    el.classList.toggle('is-error', wrongDate);
   }
 
   function renderClock() {
     renderRound();
-    renderDateWarning();
+    renderCompetitionDate();
     renderTimetable_();
   }
 
@@ -1372,9 +1371,6 @@ const SynapseScoresheet = (() => {
       endTime: data.endTime || '',
       level: data.level || '',
     };
-
-    const dateEl = document.getElementById('meta-date');
-    if (dateEl) dateEl.textContent = competitionInfo.competitionDate;
 
     renderClock();
   }

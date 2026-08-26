@@ -209,6 +209,18 @@ body {
   text-align: center;
 }
 
+/* Device clock does not match the competition date. The warning takes the date's place, so
+   the line that would have shown the wrong day says why instead. */
+.meta-date.is-error {
+  padding: 6px 8px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: clamp(10px, 2.6vw, 12px);
+  line-height: 1.35;
+}
+
 .competition-meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -328,25 +340,6 @@ body {
   outline: none;
   border-color: #007bff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.18);
-}
-
-/* Device clock does not match the competition date */
-.date-warning {
-  width: 100%;
-  text-align: center;
-  padding: 6px 8px;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
-  background: #fee2e2;
-  color: #b91c1c;
-  font-size: clamp(10px, 2.6vw, 12px);
-  font-weight: 800;
-  line-height: 1.35;
-}
-
-/* Empty still costs a gap in the flex column, so take it out of flow entirely. */
-.date-warning:empty {
-  display: none;
 }
 
 /* Try: four common one-tap answers, followed by a box for counts above 3. */
