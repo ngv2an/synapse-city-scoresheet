@@ -1339,7 +1339,6 @@ function writeRankingHeaders_(sheet) {
 
   sheet.getRange(1, 1, 2, width).setValues([group, labels]).setFontWeight('bold');
   sheet.setFrozenRows(RANKING_HEADER_ROW);
-  sheet.setFrozenColumns(1);
   sheet.setColumnWidth(1, 110);
   sheet.setColumnWidth(RANKING_SPACER_COLUMN, 24);
 }
