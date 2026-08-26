@@ -45,7 +45,6 @@ const SynapseScoresheet = (() => {
     purple: ['analysis'],
   };
 
-  const DEFAULT_SHEET_ID = '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc';
   const DRAFT_KEY_PREFIX = 'scoresheet.draft.';
   const CONFIG_KEY_PREFIX = 'scoresheet.config.';
   const HISTORY_KEY_PREFIX = 'scoresheet.history.';
@@ -62,10 +61,34 @@ const SynapseScoresheet = (() => {
   // pipeline check, so it is the one team allowed to submit before Round 1 opens.
   const TEST_TEAM = 'Test Submission';
 
+  /**
+   * Opened with no ?link=, the page has no Sheet behind it: Config is generated here from
+   * the device clock, and Submit only writes this device's history. Nothing is ever sent.
+   */
+  const DEMO_SCOPE = 'demo';
+  const DEMO_COMPETITION = 'Synapse City';
+  const DEMO_LEVEL = 'master';
+  const DEMO_JUDGES = ['Judge A', 'Judge B'];
+  const DEMO_TEAMS = ['Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5'];
+  // Round 1 opens on the hour just gone, Round 2 an hour later, End an hour after that.
+  // Held back from the end of the day so all three still land before midnight.
+  const DEMO_LAST_START_HOUR = 21;
+
   const HISTORY_MISSION_NAMES = {
     containment: 'Containment',
     neutralization: 'Neutralization',
     analysis: 'Analysis'
+  };
+
+  // A status not listed here was sent and acknowledged, which needs no label of its own.
+  const HISTORY_STATUS_LABELS = {
+    queued: 'Saved offline',
+    demo: 'Demo run - nothing was sent'
+  };
+
+  const HISTORY_STATUS_CLASSES = {
+    queued: ' is-queued',
+    demo: ' is-demo'
   };
 
   // The Sheet decides the level, so this only ever changes from the Config tab.
@@ -215,7 +238,7 @@ const SynapseScoresheet = (() => {
       'What   : ' + errorMessageOf_(err),
       '',
       'Device : ' + safely_(getOrCreateDeviceId),
-      'Sheet  : ' + safely_(getActiveSheetId),
+      'Sheet  : ' + safely_(getStorageScope_),
       'Level  : ' + safely_(() => activeLevel),
       'Judge  : ' + safely_(getSelectedJudge),
       'Team   : ' + safely_(getSelectedTeam),
@@ -307,13 +330,54 @@ const SynapseScoresheet = (() => {
     }
   }
 
+  /** '' when the page was opened with no link at all - see isDemoMode_. */
   function getActiveSheetId() {
     const urlParams = new URLSearchParams(window.location.search);
     const link = urlParams.get('sheetId') || urlParams.get('sheet') || urlParams.get('link') || urlParams.get('id');
-    if (!link) return DEFAULT_SHEET_ID;
+    if (!link) return '';
     const match = link.match(/\/d\/([a-zA-Z0-9-_]+)/);
     if (match) return match[1];
     return link.trim();
+  }
+
+  /** No Sheet to open, so Config is generated locally and no run is ever sent. */
+  function isDemoMode_() {
+    return !getActiveSheetId();
+  }
+
+  /** Storage keys still need a name when there is no Sheet ID to use as one. */
+  function getStorageScope_() {
+    return getActiveSheetId() || DEMO_SCOPE;
+  }
+
+  function demoClock_(hour) {
+    return String(hour).padStart(2, '0') + ':00:00';
+  }
+
+  /**
+   * The same shape the Web App answers with, built here instead. The schedule is anchored
+   * to the hour just gone so Round 1 is already open the moment the page loads: 11:16
+   * gives 11:00, 12:00, 13:00.
+   */
+  function buildDemoConfig_() {
+    const now = new Date();
+    const two = (value) => String(value).padStart(2, '0');
+    const start = Math.min(now.getHours(), DEMO_LAST_START_HOUR);
+
+    return {
+      ok: true,
+      sheetId: '',
+      competition: DEMO_COMPETITION,
+      competitionDate: two(now.getDate()) + '/' + two(now.getMonth() + 1) + '/' + now.getFullYear(),
+      rounds: [
+        { round: 1, time: demoClock_(start) },
+        { round: 2, time: demoClock_(start + 1) }
+      ],
+      endTime: demoClock_(start + 2),
+      level: DEMO_LEVEL,
+      judges: DEMO_JUDGES.slice(),
+      teams: DEMO_TEAMS.slice()
+    };
   }
 
   function getOrCreateDeviceId() {
@@ -334,11 +398,11 @@ const SynapseScoresheet = (() => {
   }
 
   function getDraftKey() {
-    return DRAFT_KEY_PREFIX + getActiveSheetId();
+    return DRAFT_KEY_PREFIX + getStorageScope_();
   }
 
   function getConfigKey() {
-    return CONFIG_KEY_PREFIX + getActiveSheetId();
+    return CONFIG_KEY_PREFIX + getStorageScope_();
   }
 
   /** The last good Config answer for this Sheet, or null when there has never been one. */
@@ -361,7 +425,7 @@ const SynapseScoresheet = (() => {
   }
 
   function getHistoryKey() {
-    return HISTORY_KEY_PREFIX + getActiveSheetId();
+    return HISTORY_KEY_PREFIX + getStorageScope_();
   }
 
   function saveDraft() {
@@ -572,7 +636,7 @@ const SynapseScoresheet = (() => {
     tableWrap.hidden = entries.length === 0;
 
     body.innerHTML = entries.map((entry) => {
-      const statusClass = entry.status === 'queued' ? ' is-queued' : '';
+      const statusClass = HISTORY_STATUS_CLASSES[entry.status] || '';
       const round = entry.round === '' || entry.round === undefined ? '-' : entry.round;
       const total = Number.isFinite(Number(entry.totalScore)) ? Number(entry.totalScore) : 0;
       const label = 'View ' + String(entry.team || 'submission') + ' details';
@@ -599,13 +663,20 @@ const SynapseScoresheet = (() => {
     return /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(url) ? url : '';
   }
 
+  /** A demo run has no Sheet behind it, so it can only report what this device holds. */
+  function historyPhotoLabel_(entry, photoUrl) {
+    if (!entry.hasPhoto) return 'None';
+    if (entry.status === 'demo') return photoUrl ? 'Stored on this device' : 'Not kept';
+    return photoUrl ? 'Included in Sheet submission' : 'In Sheet only';
+  }
+
   function buildHistoryDetails_(entry) {
     const level = String(entry.level || '').toLowerCase();
     const blockIds = LEVELS[level] || ALL_BLOCKS.map((block) => block.id);
     const botIds = LEANBOT_LEVELS[level] || [];
     const savedScores = entry.scores && typeof entry.scores === 'object' ? entry.scores : {};
     const savedLeanbots = entry.leanbots && typeof entry.leanbots === 'object' ? entry.leanbots : {};
-    const status = entry.status === 'queued' ? 'Saved offline' : 'Submitted';
+    const status = HISTORY_STATUS_LABELS[entry.status] || 'Submitted';
     const round = entry.round === '' || entry.round === undefined ? '-' : entry.round;
     // Older records, and any whose photo was dropped to make room, keep the flag but not the copy.
     const photoUrl = getHistoryPhotoUrl_(entry);
@@ -622,7 +693,7 @@ const SynapseScoresheet = (() => {
       ['Time', entry.missionTime || '-'],
       ['Try', entry.tryCount === undefined ? '-' : entry.tryCount],
       ['Total Score', Number.isFinite(Number(entry.totalScore)) ? Number(entry.totalScore) : 0],
-      ['Photo', !entry.hasPhoto ? 'None' : (photoUrl ? 'Included in Sheet submission' : 'In Sheet only')]
+      ['Photo', historyPhotoLabel_(entry, photoUrl)]
     ];
 
     // What went to the Sheet, which is not the smaller copy displayed below.
@@ -1105,6 +1176,14 @@ const SynapseScoresheet = (() => {
    * thing that goes back to the Sheet, and the judge decides when the copy is stale.
    */
   async function loadMetadata(force) {
+    // Nothing to fetch, and nothing to cache either: the schedule is read off the clock,
+    // so a stored copy would freeze it at whatever hour it was first built.
+    if (isDemoMode_()) {
+      applyMetadata(buildDemoConfig_());
+      setConfigLoadingState('', null);
+      return true;
+    }
+
     const sheetId = getActiveSheetId();
 
     // Update View Submission link
@@ -1563,6 +1642,19 @@ const SynapseScoresheet = (() => {
       photoBase64: currentPhotoDataUrl,
     };
     const historyEntry = createSubmissionHistoryEntry_(submission);
+
+    // Demo mode has nowhere to send the run, so history is the whole of the record.
+    if (isDemoMode_()) {
+      const savedLocally = saveSubmissionHistoryEntry_(historyEntry, 'demo', null);
+      setSubmitStatus(
+        savedLocally
+          ? 'Saved to History on this device. No Sheet is linked, so nothing was sent.'
+          : 'History could not be saved on this device.',
+        savedLocally ? 'ok' : 'warn'
+      );
+      return;
+    }
+
     const pendingBefore = pendingCount();
 
     btn.disabled = true;
@@ -1613,7 +1705,8 @@ const SynapseScoresheet = (() => {
   }
 
   async function flushQueue(announceIdle) {
-    if (pendingCount() === 0) return;
+    // The queue belongs to a real Sheet; demo mode never puts anything into it.
+    if (isDemoMode_() || pendingCount() === 0) return;
 
     const sent = await SheetSubmit.flush();
     const left = pendingCount();
