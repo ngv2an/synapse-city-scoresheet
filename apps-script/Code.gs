@@ -29,7 +29,7 @@ const SHEET_NAME_CONFIG = 'Config';
  * somewhere to be recorded; that failure used to go unlogged, because the log went into
  * the very file that would not open.
  */
-const LOG_SHEET_ID = '17e00abEl3_EUAiMr4sxqAlNlyvuTjXYO9pfsW-eg528';
+const LOG_SHEET_ID = '1Adg6eF-K_VkB5QwNLjtR0iDIxYLLk56B3mlqMIcGgDQ';
 const LOG_SHEET_PREFIX = 'Logs - ';
 // Where a run lands when its level cannot be worked out: a sheetId outside LEVEL_SHEET_IDS,
 // or a failure early enough that Config was never read. Created only when something needs it.
@@ -70,7 +70,7 @@ const SCORE_LEVEL_TITLES = {
 const HEADERS_SCORES = [
   'Submission Time', 'Device ID', 'Level', 'Judge', 'Team', 'Round', 'Score', 'Time', 'Try',
   '', 'Green', 'Blue', 'Purple', 'Mystery', 'Red', 'Yellow 1', 'Yellow 2', 'Leanbot 1', 'Leanbot 2',
-  'Photo URL', 'Submission ID', 'User Agent'
+  'Photo URL', 'Photo Size (KB)', 'Submission ID', 'User Agent'
 ];
 
 /**
@@ -513,6 +513,9 @@ function doPost(e) {
       s.leanbot1 ? 'CRL' : '',
       s.leanbot2 ? 'CRL' : '',
       photoUrl,
+      // Blank rather than 0 for a run with no photo, so it reads like the empty Photo URL
+      // beside it instead of like a photo that measured nothing.
+      photoSizeKb || '',
       id,
       String(body.userAgent || '').slice(0, 200)
     ]);
@@ -629,8 +632,10 @@ function ensureScoreSheet_(ss, levelTitle) {
 }
 
 /**
- * Upgrades the old Scores layout by inserting Level before Judge and a blank separator
- * between Try and Green. Existing rows keep their data aligned during both migrations.
+ * Upgrades the old Scores layout by inserting Level before Judge, a blank separator
+ * between Try and Green, and Photo Size (KB) after Photo URL. Existing rows keep their
+ * data aligned through all three migrations; the sizes of photos already sent are not
+ * known, so those cells stay empty.
  */
 function ensureScoreSheetSchema_(sheet, levelTitle) {
   if (sheet.getLastRow() === 0) {
@@ -667,6 +672,19 @@ function ensureScoreSheetSchema_(sheet, levelTitle) {
   } else if (headerAfterTry !== '' || followingHeader !== 'Green') {
     throw new Error(
       'Unexpected Scores layout: the column after Try must be blank and followed by Green.'
+    );
+  }
+
+  // Photo Size sits beside Photo URL in column T, so U is either it or the Submission ID
+  // that used to follow. Anything else is a layout this cannot safely widen.
+  const headerAfterPhotoUrl = String(sheet.getRange(1, 21).getValue() || '').trim();
+
+  if (headerAfterPhotoUrl === 'Submission ID') {
+    sheet.insertColumnBefore(21);
+    sheet.getRange(1, 21).setValue('Photo Size (KB)').setFontWeight('bold');
+  } else if (headerAfterPhotoUrl !== 'Photo Size (KB)') {
+    throw new Error(
+      'Unexpected Scores layout: cell U1 must be "Photo Size (KB)" (new) or "Submission ID" (old).'
     );
   }
 
@@ -727,12 +745,21 @@ function resetScoresSheet() {
   writeScoreHeaders_(ss.insertSheet(scoreSheetName));
 }
 
+/**
+ * Drive shows the file name, so the extension has to match what the bytes actually are:
+ * the client writes WebP where the browser can encode it and JPEG where it cannot, and
+ * one deployment serves both.
+ */
+const PHOTO_EXTENSIONS = { 'image/webp': 'webp', 'image/png': 'png' };
+
 function savePhoto_(id, dataUrl) {
   if (!DRIVE_FOLDER_ID) return '';
   const m = String(dataUrl).match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
   if (!m) return '';
 
-  const blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], id + '.jpg');
+  const mime = m[1].toLowerCase();
+  const name = id + '.' + (PHOTO_EXTENSIONS[mime] || 'jpg');
+  const blob = Utilities.newBlob(Utilities.base64Decode(m[2]), mime, name);
   return DriveApp.getFolderById(DRIVE_FOLDER_ID).createFile(blob).getUrl();
 }
 

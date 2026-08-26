@@ -49,9 +49,11 @@ const SynapseScoresheet = (() => {
   const CONFIG_KEY_PREFIX = 'scoresheet.config.';
   const HISTORY_KEY_PREFIX = 'scoresheet.history.';
   const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
-  // The Sheet gets the full photo; history keeps a smaller copy so a day of runs fits
-  // in the ~5MB localStorage box.
-  const HISTORY_PHOTO_MAX_SIZE = 640;
+  // Both copies are the same size, so the history copy only saves what the lower quality
+  // saves - a fraction of what halving the edge used to. What keeps a long day of runs
+  // from failing to save at all is writeSubmissionHistory_, which drops the oldest photo
+  // and tries again whenever the store is full.
+  const HISTORY_PHOTO_MAX_SIZE = 1280;
   const HISTORY_PHOTO_QUALITY = 0.6;
   const HISTORY_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
   const DEVICE_KEY = 'scoresheet.deviceId';
@@ -997,6 +999,26 @@ const SynapseScoresheet = (() => {
    * resolves { dataUrl, width, height, bytes } - the canvas already knows the size it
    * wrote, so measuring here costs nothing and saves decoding the result again to ask.
    */
+  /**
+   * WebP writes the same picture in appreciably fewer bytes where the browser can encode
+   * it. Where it cannot, toDataURL returns PNG and says nothing about it - and a PNG here
+   * would be several times the JPEG it replaced. Reading the type back off the result is
+   * the documented way to tell, so ask a one-pixel canvas once and take JPEG wherever the
+   * answer is no. Safari is the one to watch: it displays WebP but has long been unable to
+   * write it, so an iPad stays on JPEG and nothing about that needs handling here.
+   */
+  let webpEncoding = null;
+
+  function photoMimeType_() {
+    if (webpEncoding === null) {
+      const probe = document.createElement('canvas');
+      probe.width = 1;
+      probe.height = 1;
+      webpEncoding = probe.toDataURL('image/webp').indexOf('data:image/webp') === 0;
+    }
+    return webpEncoding ? 'image/webp' : 'image/jpeg';
+  }
+
   function compressImage(source, maxSize = 1280, quality = 0.7) {
     return new Promise((resolve, reject) => {
       const isFile = typeof source !== 'string';
@@ -1014,7 +1036,7 @@ const SynapseScoresheet = (() => {
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         release();
 
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const dataUrl = canvas.toDataURL(photoMimeType_(), quality);
         resolve({
           dataUrl: dataUrl,
           width: canvas.width,
@@ -1809,8 +1831,8 @@ const SynapseScoresheet = (() => {
             container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           }
 
-          // Downscaled off the finished photo rather than the file, so it costs one
-          // cheap decode - and a failure here only means history shows no picture.
+          // Re-encoded from the finished photo rather than the file, so it costs one cheap
+          // decode - and a failure here only means history shows no picture.
           return compressImage(photo.dataUrl, HISTORY_PHOTO_MAX_SIZE, HISTORY_PHOTO_QUALITY)
             .then((thumb) => {
               currentPhotoThumbUrl = thumb.dataUrl;
