@@ -53,6 +53,20 @@ const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
 const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C';
 const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
 
+/**
+ * Two questions were being asked of Sheets on every single submit, inside the lock, and
+ * both have the same answer they had twelve seconds earlier: which level is this file, and
+ * does its Scores tab still have the layout this code writes. Reading the Config tab for
+ * the first cost a full getValues() of the whole tab to extract one word.
+ *
+ * Cached across the deployment, so all four files draw on the same store. Both are
+ * best-effort: a miss falls through to the original check, so nothing here can make the
+ * code wrong, only slower. An hour bounds how long a Level change or a hand-broken layout
+ * can go unnoticed - and doGet refreshes the level whenever a judge reloads Config.
+ */
+const LEVEL_CACHE_TTL = 3600;
+const SCHEMA_CACHE_TTL = 3600;
+
 const SCORE_LEVEL_TITLES = {
   explorer: 'Explorer',
   creator: 'Creator',
@@ -236,6 +250,9 @@ function doGet(e) {
     sheetId = resolveSheetId_(e && e.parameter ? (e.parameter.sheetId || e.parameter.link) : '');
     const ss = SpreadsheetApp.openById(sheetId);
     const config = readConfig_(ss);
+    // This read is the expensive half of what doPost used to repeat under the lock, and it
+    // has just been paid for out here where nothing queues behind it. Hand it over.
+    cacheLevelTitle_(sheetId, SCORE_LEVEL_TITLES[config.level] || '');
 
     // Config reads take no lock, so all of it is work.
     logActivity_({
@@ -637,13 +654,26 @@ function ensureScoreSheet_(ss, levelTitle) {
  * data aligned through all three migrations; the sizes of photos already sent are not
  * known, so those cells stay empty.
  */
-function ensureScoreSheetSchema_(sheet, levelTitle) {
+function ensureScoreSheetSchema_(sheet, levelTitle, sheetId) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'schema:' + sheetId;
+  if (sheetId && cache.get(cacheKey)) return;
+
   if (sheet.getLastRow() === 0) {
     writeScoreHeaders_(sheet);
+    if (sheetId) cache.put(cacheKey, '1', SCHEMA_CACHE_TTL);
     return;
   }
 
-  const thirdHeader = String(sheet.getRange(1, 3).getValue() || '').trim();
+  // One read of the header row rather than one per column inspected. Bounded by what the
+  // tab actually has, because an unmigrated tab is narrower than HEADERS_SCORES.
+  const header = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0];
+  const headerAt = function (column) {
+    const value = header[column - 1];
+    return String(value === null || value === undefined ? '' : value).trim();
+  };
+
+  const thirdHeader = headerAt(3);
 
   if (thirdHeader === 'Judge') {
     sheet.insertColumnBefore(3);
@@ -664,8 +694,8 @@ function ensureScoreSheetSchema_(sheet, levelTitle) {
 
   // After the Level migration, Try is column I. Older layouts put Green immediately in J;
   // insert a blank J so the mission columns begin at K without shifting row values apart.
-  const headerAfterTry = String(sheet.getRange(1, 10).getValue() || '').trim();
-  const followingHeader = String(sheet.getRange(1, 11).getValue() || '').trim();
+  const headerAfterTry = headerAt(10);
+  const followingHeader = headerAt(11);
 
   if (headerAfterTry === 'Green') {
     sheet.insertColumnBefore(10);
@@ -677,7 +707,7 @@ function ensureScoreSheetSchema_(sheet, levelTitle) {
 
   // Photo Size sits beside Photo URL in column T, so U is either it or the Submission ID
   // that used to follow. Anything else is a layout this cannot safely widen.
-  const headerAfterPhotoUrl = String(sheet.getRange(1, 21).getValue() || '').trim();
+  const headerAfterPhotoUrl = headerAt(21);
 
   if (headerAfterPhotoUrl === 'Submission ID') {
     sheet.insertColumnBefore(21);
@@ -689,12 +719,38 @@ function ensureScoreSheetSchema_(sheet, levelTitle) {
   }
 
   formatSubmissionTimeColumn_(sheet);
+  if (sheetId) cache.put(cacheKey, '1', SCHEMA_CACHE_TTL);
+}
+
+function cacheLevelTitle_(sheetId, levelTitle) {
+  if (!sheetId || !levelTitle) return;
+  CacheService.getScriptCache().put('level:' + sheetId, levelTitle, LEVEL_CACHE_TTL);
+}
+
+/**
+ * Config says which level a file is, and that answer outlives one submit. Read it from
+ * cache where there is one; otherwise ask Config and remember what it said.
+ */
+function cachedLevelTitle_(ss, sheetId) {
+  const cached = sheetId ? CacheService.getScriptCache().get('level:' + sheetId) : '';
+  if (cached) return cached;
+
+  const levelTitle = getScoreLevelTitle_(ss);
+  cacheLevelTitle_(sheetId, levelTitle);
+  return levelTitle;
+}
+
+/** Called when Config is edited, so the next submit asks Config rather than the cache. */
+function invalidateSheetCache_(sheetId) {
+  if (!sheetId) return;
+  CacheService.getScriptCache().removeAll(['level:' + sheetId, 'schema:' + sheetId]);
 }
 
 function prepareScoreSheet_(ss) {
-  const levelTitle = getScoreLevelTitle_(ss);
+  const sheetId = ss.getId();
+  const levelTitle = cachedLevelTitle_(ss, sheetId);
   const sheet = ensureScoreSheet_(ss, levelTitle);
-  ensureScoreSheetSchema_(sheet, levelTitle);
+  ensureScoreSheetSchema_(sheet, levelTitle, sheetId);
   return sheet;
 }
 
@@ -709,6 +765,9 @@ function onOpen(e) {
 
 function onEdit(e) {
   if (!e || !e.range || e.range.getSheet().getName() !== SHEET_NAME_CONFIG) return;
+
+  // Config just changed, so whatever was cached about this file is no longer trustworthy.
+  invalidateSheetCache_(e.source.getId());
   prepareScoreSheet_(e.source);
 }
 
