@@ -124,6 +124,9 @@ const SynapseScoresheet = (() => {
   let tryValue = DEFAULT_TRY;
   // Team options arrive with metadata, so keep the restored value until that list exists.
   let restoredTeam = '';
+  // Every team in Config, and - where Config groups them - which judge each one belongs to.
+  let allTeams = [];
+  let teamRoster = null;
   let historyCleanupTicker = null;
   let historyLastFocus = null;
   let timetableTicker = null;
@@ -1599,20 +1602,47 @@ const SynapseScoresheet = (() => {
       }
     }
 
-    // Populate Teams
+    // Teams come from the judge, so they are filled in after the judge above is settled.
+    allTeams = Array.isArray(data.teams) ? data.teams : [];
+    teamRoster = data.teamsByJudge && typeof data.teamsByJudge === 'object'
+      ? data.teamsByJudge
+      : null;
+    renderTeamOptions_();
+  }
+
+  /**
+   * Which teams this judge may score. A grouped Config answers with their own list and
+   * nothing else, so picking the wrong judge cannot put a run under the wrong team; a flat
+   * one has no opinion and gives everyone the same list, the way it always did.
+   *
+   * With grouping on and no judge chosen yet there is nothing truthful to offer, so the
+   * list stays empty until one is.
+   */
+  function teamsForJudge_(judge) {
+    if (!teamRoster) return allTeams;
+    if (!judge) return [];
+
+    return Array.isArray(teamRoster[judge]) ? teamRoster[judge] : [];
+  }
+
+  /** Rebuilt whenever the judge changes, keeping the current pick only if it survives. */
+  function renderTeamOptions_() {
     const teamSelect = document.getElementById('team-select');
-    if (teamSelect && Array.isArray(data.teams)) {
-      const currentVal = getSelectedTeam() || restoredTeam;
-      // Appended rather than listed in Config, so every copy has it and none can lose it.
-      const teams = data.teams.filter((t) => t !== TEST_TEAM).concat([TEST_TEAM]);
-      let opts = '<option value="">-- Select Team ID --</option>';
-      teams.forEach((t) => {
-        opts += `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`;
-      });
-      teamSelect.innerHTML = opts;
-      teamSelect.value = optionExists(teamSelect, currentVal) ? currentVal : '';
-      restoredTeam = teamSelect.value;
-    }
+    if (!teamSelect) return;
+
+    const currentVal = getSelectedTeam() || restoredTeam;
+    // Appended rather than listed in Config, so every copy has it and no judge lacks it.
+    const teams = teamsForJudge_(getSelectedJudge())
+      .filter((t) => t !== TEST_TEAM)
+      .concat([TEST_TEAM]);
+
+    let opts = '<option value="">-- Select Team ID --</option>';
+    teams.forEach((t) => {
+      opts += `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`;
+    });
+    teamSelect.innerHTML = opts;
+    teamSelect.value = optionExists(teamSelect, currentVal) ? currentVal : '';
+    restoredTeam = teamSelect.value;
   }
 
   function validateSubmission(now) {
@@ -1935,6 +1965,9 @@ const SynapseScoresheet = (() => {
         try {
           localStorage.setItem(JUDGE_KEY, judgeSelect.value);
         } catch (e) {}
+
+        // A different judge scores different teams, so the list below has to follow.
+        renderTeamOptions_();
       });
     }
 

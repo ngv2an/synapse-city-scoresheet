@@ -176,7 +176,10 @@ function buildConfigTemplate_(levelTitle, sheetId, config) {
   const source = config || {};
   const judges = Array.isArray(source.judges) ? source.judges : [];
   const teams = Array.isArray(source.teams) ? source.teams : [];
-  const entries = Math.max(judges.length, teams.length, CONFIG_SAMPLE_ENTRIES);
+  // Grouping is part of what the tab says, so a rebuild has to write it back grouped -
+  // flattening it here would quietly reassign every team to a different judge.
+  const roster = buildRosterRows_(judges, teams, source.teamsByJudge);
+  const entries = Math.max(roster.length, CONFIG_SAMPLE_ENTRIES);
   const blockRows = CONFIG_ENTRY_START_ROW - 1 + entries;
 
   const rows = [];
@@ -202,8 +205,15 @@ function buildConfigTemplate_(levelTitle, sheetId, config) {
 
   for (let i = 0; i < entries; i++) {
     const row = rows[CONFIG_ENTRY_START_ROW - 1 + i];
-    row[0] = judges[i] || (config ? '' : (i === 0 ? levelTitle + ' Judge A' : ''));
-    row[1] = teams[i] || (config ? '' : levelTitle + ' Team 1' + i);
+    const pair = roster[i];
+
+    if (pair) {
+      row[0] = pair[0];
+      row[1] = pair[1];
+    } else if (!config) {
+      row[0] = i === 0 ? levelTitle + ' Judge A' : '';
+      row[1] = levelTitle + ' Team 1' + i;
+    }
   }
 
   if (levelTitle !== 'Explorer') {
@@ -347,9 +357,17 @@ function readConfig_(ss) {
     rounds: [],
     endTime: '',
     level: '',
-    judges: readConfigColumn_(data, CONFIG_JUDGE_HEADERS),
-    teams: readConfigColumn_(data, CONFIG_TEAM_HEADERS)
+    judges: [],
+    teams: [],
+    // null where the tab does not group teams under judges, which is how the scoresheet
+    // tells "this judge scores these five" from "everyone scores everything".
+    teamsByJudge: null
   };
+
+  const roster = readJudgeTeams_(data);
+  config.judges = roster.judges;
+  config.teams = roster.teams;
+  config.teamsByJudge = roster.grouped ? roster.teamsByJudge : null;
 
   const roundTimes = {};
 
@@ -380,21 +398,89 @@ function readConfig_(ss) {
   return config;
 }
 
-/** Collects every non-empty cell under the first header cell matching one of `headers`. */
-function readConfigColumn_(data, headers) {
+/** Where the first header cell matching one of `headers` sits, or null if there is none. */
+function findConfigColumn_(data, headers) {
   for (let r = 0; r < data.length; r++) {
     for (let c = 0; c < data[r].length; c++) {
-      if (headers.indexOf(normalizeLabel_(data[r][c])) === -1) continue;
-
-      const values = [];
-      for (let i = r + 1; i < data.length; i++) {
-        const value = String(data[i][c] === null || data[i][c] === undefined ? '' : data[i][c]).trim();
-        if (value) values.push(value);
-      }
-      return Array.from(new Set(values));
+      if (headers.indexOf(normalizeLabel_(data[r][c])) !== -1) return { row: r, column: c };
     }
   }
-  return [];
+  return null;
+}
+
+function cellText_(value) {
+  return String(value === null || value === undefined ? '' : value).trim();
+}
+
+/**
+ * Judges and the teams that belong to them, read as one block rather than two lists.
+ *
+ * A name in the Judge column opens a group and every team below it belongs to that judge,
+ * until the next name appears. Blank rows are separators an organiser may or may not leave
+ * between groups, so they never close one.
+ *
+ * The older layout put one team beside each judge and meant nothing by the pairing. Both
+ * still parse. They are told apart by whether any team sits on a row with no judge beside
+ * it, which only the grouped layout produces - counting teams per judge would misread a
+ * group that happens to hold one.
+ */
+function readJudgeTeams_(data) {
+  const judgeColumn = findConfigColumn_(data, CONFIG_JUDGE_HEADERS);
+  const teamColumn = findConfigColumn_(data, CONFIG_TEAM_HEADERS);
+  if (!judgeColumn || !teamColumn) return { judges: [], teams: [], teamsByJudge: {}, grouped: false };
+
+  const judges = [];
+  const teams = [];
+  const teamsByJudge = {};
+  let current = '';
+  let grouped = false;
+
+  for (let r = Math.max(judgeColumn.row, teamColumn.row) + 1; r < data.length; r++) {
+    const judge = cellText_(data[r][judgeColumn.column]);
+    const team = cellText_(data[r][teamColumn.column]);
+
+    if (judge) {
+      current = judge;
+      if (judges.indexOf(judge) === -1) {
+        judges.push(judge);
+        teamsByJudge[judge] = [];
+      }
+    }
+
+    if (!team) continue;
+    // A team standing on its own row belongs to the judge above it, and says so.
+    if (!judge && current) grouped = true;
+    if (teams.indexOf(team) === -1) teams.push(team);
+    if (current && teamsByJudge[current].indexOf(team) === -1) teamsByJudge[current].push(team);
+  }
+
+  return { judges: judges, teams: teams, teamsByJudge: teamsByJudge, grouped: grouped };
+}
+
+/**
+ * The Judge/Team block as [judge, team] rows, written back the way it was read: a judge
+ * opens a group and their teams run down beside an empty Judge cell, one blank row between
+ * groups. Without grouping it falls back to the flat pairing the old tabs used.
+ */
+function buildRosterRows_(judges, teams, teamsByJudge) {
+  const rows = [];
+
+  if (!teamsByJudge) {
+    for (let i = 0; i < Math.max(judges.length, teams.length); i++) {
+      rows.push([judges[i] || '', teams[i] || '']);
+    }
+    return rows;
+  }
+
+  judges.forEach(function (judge, index) {
+    const owned = Array.isArray(teamsByJudge[judge]) ? teamsByJudge[judge] : [];
+    if (index > 0) rows.push(['', '']);
+
+    rows.push([judge, owned[0] || '']);
+    for (let i = 1; i < owned.length; i++) rows.push(['', owned[i]]);
+  });
+
+  return rows;
 }
 
 function normalizeLabel_(cell) {
