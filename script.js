@@ -115,9 +115,13 @@ const SynapseScoresheet = (() => {
   // { width, height, bytes } for each of the two, measured once when the photo is taken
   let currentPhotoInfo = null;
   let currentPhotoThumbInfo = null;
-  // Try: the count the row means, kept in step with the box - typing 0-3 is the same
+  // A run always took at least one attempt, so the buttons start at 1 and so does the
+  // count a fresh sheet carries.
+  const DEFAULT_TRY = 1;
+  const MAX_TRY_BUTTON = 4;
+  // Try: the count the row means, kept in step with the box - typing 1-4 is the same
   // answer as tapping that button, so it lights up either way.
-  let tryValue = 0;
+  let tryValue = DEFAULT_TRY;
   // Team options arrive with metadata, so keep the restored value until that list exists.
   let restoredTeam = '';
   let historyCleanupTicker = null;
@@ -484,10 +488,13 @@ const SynapseScoresheet = (() => {
     const timeInput = document.getElementById('mission-time');
     if (timeInput) timeInput.value = formatMissionTime(draft.missionTime || DEFAULT_MISSION_TIME);
 
+    // A draft written before the buttons started at 1 can hold a 0, which no longer has a
+    // button to restore it to.
     const savedTryValue = Number(draft.tryValue);
-    tryValue = Number.isInteger(savedTryValue) && savedTryValue >= 0 && savedTryValue <= 3
+    tryValue = Number.isInteger(savedTryValue)
+      && savedTryValue >= DEFAULT_TRY && savedTryValue <= MAX_TRY_BUTTON
       ? savedTryValue
-      : 0;
+      : DEFAULT_TRY;
 
     // Drafts written before the box replaced the Other button kept the typed count in
     // tryOther, and only meant it while tryIsOther was set - a leftover there belongs to
@@ -1122,19 +1129,19 @@ const SynapseScoresheet = (() => {
     return input ? input.value.trim() : '';
   }
 
-  /** A typed count above 3 has no button to light; every other state has one. */
+  /** A typed count above 4 has no button to light; every other valid state has one. */
   function tryMatchesButton() {
     const typed = getTypedTry();
     if (!typed) return true;
 
     const n = Number(typed);
-    return Number.isInteger(n) && n >= 0 && n <= 3;
+    return Number.isInteger(n) && n >= DEFAULT_TRY && n <= MAX_TRY_BUTTON;
   }
 
   function tryUsesTextInput() {
     const typed = getTypedTry();
     if (!/^\d{1,2}$/.test(typed)) return false;
-    return Number(typed) > 3;
+    return Number(typed) > MAX_TRY_BUTTON;
   }
 
   /** Tapping the box is already the answer "not one of these four", so it lights up
@@ -1144,7 +1151,7 @@ const SynapseScoresheet = (() => {
     return !!input && document.activeElement === input;
   }
 
-  /** Typing 0-3 is the same answer as tapping that button, so the two never drift apart. */
+  /** Typing 1-4 is the same answer as tapping that button, so the two never drift apart. */
   function syncTryValueFromBox() {
     const typed = getTypedTry();
     if (typed !== '' && tryMatchesButton()) tryValue = Number(typed);
@@ -1156,12 +1163,13 @@ const SynapseScoresheet = (() => {
     if (!raw) return tryValue;
     if (!/^\d{1,2}$/.test(raw)) return null;
 
+    // 0 has no button and no meaning now: a run that happened was attempted at least once.
     const typed = Number(raw);
-    return Number.isInteger(typed) && typed >= 0 && typed <= 99 ? typed : null;
+    return Number.isInteger(typed) && typed >= DEFAULT_TRY && typed <= 99 ? typed : null;
   }
 
   function resetTry() {
-    tryValue = 0;
+    tryValue = DEFAULT_TRY;
 
     const input = document.getElementById('try-input');
     if (input) {
@@ -1657,7 +1665,7 @@ const SynapseScoresheet = (() => {
 
     const tryCount = getTryCount();
     if (tryCount === null) {
-      reasons.push('Try must be a whole number from 0 to 99.');
+      reasons.push('Try must be a whole number from 1 to 99.');
       const input = document.getElementById('try-input');
       if (input) input.setAttribute('aria-invalid', 'true');
       if (!focusTarget) focusTarget = input;
