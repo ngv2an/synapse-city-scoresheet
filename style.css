@@ -956,6 +956,16 @@ body {
   background: #f1f5f9;
 }
 
+/* Still in flight: the row is already the record, the outcome is not in yet. */
+.history-entry.is-sending {
+  background: #e0e7ff;
+}
+
+/* Refused outright. The run is on this device and nowhere else. */
+.history-entry.is-failed {
+  background: #fee2e2;
+}
+
 body.history-modal-open,
 body.timetable-modal-open,
 body.error-modal-open {

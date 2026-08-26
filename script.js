@@ -84,12 +84,16 @@ const SynapseScoresheet = (() => {
 
   // A status not listed here was sent and acknowledged, which needs no label of its own.
   const HISTORY_STATUS_LABELS = {
+    sending: 'Sending',
     queued: 'Saved offline',
+    failed: 'Not sent - still on this device',
     demo: 'Demo run - nothing was sent'
   };
 
   const HISTORY_STATUS_CLASSES = {
+    sending: ' is-sending',
     queued: ' is-queued',
+    failed: ' is-failed',
     demo: ' is-demo'
   };
 
@@ -619,6 +623,28 @@ const SynapseScoresheet = (() => {
     });
     const entries = readSubmissionHistory_();
     entries.unshift(savedEntry);
+
+    const saved = writeSubmissionHistory_(entries);
+    renderSubmissionHistory_();
+    return saved;
+  }
+
+  /**
+   * Moves a run already on the list to what became of it, rather than adding a second row
+   * for the same run. The record goes down before the network is touched, so every later
+   * outcome - sent, queued, refused - is an edit to a line the judge can already see.
+   */
+  function updateSubmissionHistoryEntry_(id, status, result) {
+    const entries = readSubmissionHistory_();
+    const index = entries.findIndex((item) => item && item.id === id);
+    // Missing only when the first write was refused for space, and that was reported then.
+    if (index < 0) return false;
+
+    entries[index] = Object.assign({}, entries[index], {
+      status: status,
+      row: result && result.row ? result.row : entries[index].row,
+      submissionId: result && result.submissionId ? result.submissionId : entries[index].submissionId
+    });
 
     const saved = writeSubmissionHistory_(entries);
     renderSubmissionHistory_();
@@ -1775,6 +1801,11 @@ const SynapseScoresheet = (() => {
 
     const pendingBefore = pendingCount();
 
+    // On this device's list before it goes anywhere. A judge watching the History section
+    // sees the run land the moment they submit, and a tab that dies mid-request still
+    // leaves the record behind - which is the whole reason the list exists.
+    const historySaved = saveSubmissionHistoryEntry_(historyEntry, 'sending', null);
+
     btn.disabled = true;
     btn.textContent = 'Sending…';
     setSubmitStatus('', null);
@@ -1786,7 +1817,7 @@ const SynapseScoresheet = (() => {
       // Competition and level are read from Config by the server, rather than trusted from
       // values sent by the scoring device.
       const result = await SheetSubmit.submit(submission);
-      const historySaved = saveSubmissionHistoryEntry_(historyEntry, 'submitted', result);
+      updateSubmissionHistoryEntry_(historyEntry.id, 'submitted', result);
 
       if (result.duplicate && !result.viaRetry) {
         const historyWarning = historySaved ? '' : ' History could not be saved on this device.';
@@ -1807,7 +1838,7 @@ const SynapseScoresheet = (() => {
     } catch (err) {
       const pending = pendingCount();
       if (pending > pendingBefore) {
-        const historySaved = saveSubmissionHistoryEntry_(historyEntry, 'queued', null);
+        updateSubmissionHistoryEntry_(historyEntry.id, 'queued', null);
         const historyWarning = historySaved ? '' : ' History could not be saved.';
         setSubmitStatus(
           'Saved on this device (' + pending + ' waiting), ' + err.message + historyWarning
@@ -1815,6 +1846,7 @@ const SynapseScoresheet = (() => {
           'warn'
         );
       } else {
+        updateSubmissionHistoryEntry_(historyEntry.id, 'failed', null);
         setSubmitStatus('Submit failed: ' + err.message + elapsedNote_(sentAt), 'error');
         showError_('Submitting a run', err);
       }
