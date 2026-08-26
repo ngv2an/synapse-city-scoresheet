@@ -473,6 +473,10 @@ function doPost(e) {
       return json({ ok: false, error: 'unauthorized' });
     }
 
+    // A photo sent ahead of the run it belongs to: no lock, no Sheet, nothing to dedupe.
+    // Answering it here is what keeps Drive file creation out of the Submit a judge waits on.
+    if (body.action === 'photo') return handlePhotoUpload_(body, startTime);
+
     id = String(body.submissionId || Utilities.getUuid());
 
     // Opened before the cache check so a duplicate has somewhere to be recorded. A retry
@@ -497,8 +501,10 @@ function doPost(e) {
       return json({ ok: true, duplicate: true, submissionId: id, row: Number(cachedRow) });
     }
 
-    photoSizeKb = body.photoBase64 ? Math.round(body.photoBase64.length * 0.75 / 1024) : 0;
-    const photoUrl = body.photoBase64 ? savePhoto_(id, body.photoBase64) : '';
+    const photo = resolvePhoto_(body, id);
+    // Only a file this execution created spends the day's Drive allowance; one sent ahead
+    // was already counted on its own log row, and counting it twice would overstate usage.
+    photoSizeKb = photo.created ? photo.sizeKb : 0;
 
     // Wait for lock to append row safely
     waitStart = Date.now();
@@ -529,10 +535,10 @@ function doPost(e) {
       s.yellow2 || '',
       s.leanbot1 ? 'CRL' : '',
       s.leanbot2 ? 'CRL' : '',
-      photoUrl,
+      photo.url,
       // Blank rather than 0 for a run with no photo, so it reads like the empty Photo URL
       // beside it instead of like a photo that measured nothing.
-      photoSizeKb || '',
+      photo.sizeKb || '',
       id,
       String(body.userAgent || '').slice(0, 200)
     ]);
@@ -810,6 +816,89 @@ function resetScoresSheet() {
  * one deployment serves both.
  */
 const PHOTO_EXTENSIONS = { 'image/webp': 'webp', 'image/png': 'png' };
+// A run hands back a URL it was given rather than one this code produced, so accept only
+// what Drive itself would have returned.
+const PHOTO_URL_PREFIX = 'https://drive.google.com/';
+const PHOTO_CACHE_TTL = 21600;
+
+/**
+ * Stores one photo and says where it went. Called the moment the judge takes it, while
+ * they are still scoring, so the run itself never pays the ~2.4s a Drive file costs.
+ *
+ * The URL is cached under the id the client chose as well as returned. A reply that does
+ * not survive the redirect Apps Script answers with would otherwise strand a file nothing
+ * can reference; this way the run can still ask for it by id.
+ */
+function handlePhotoUpload_(body, startTime) {
+  const sheetId = resolveSheetId_(body.sheetId || body.link);
+  const photoId = String(body.photoId || Utilities.getUuid());
+  let sizeKb = 0;
+
+  try {
+    sizeKb = body.photoBase64 ? Math.round(body.photoBase64.length * 0.75 / 1024) : 0;
+    const photoUrl = body.photoBase64 ? savePhoto_(photoId, body.photoBase64) : '';
+    if (photoUrl) {
+      CacheService.getScriptCache().put('photo:' + photoId, photoUrl + '|' + sizeKb, PHOTO_CACHE_TTL);
+    }
+
+    logActivity_({
+      action: 'Photo',
+      sheetId: sheetId,
+      total: secondsSince_(startTime),
+      // Only a size that belongs to a file that exists: the dashboard counts a row with
+      // one as a Drive file created, and a failed upload created nothing.
+      photoSizeKb: photoUrl ? sizeKb : 0,
+      status: photoUrl ? 'OK' : 'ERROR',
+      submissionId: photoId,
+      error: photoUrl ? '' : 'No image data, or the Drive folder is not set'
+    });
+
+    return json({ ok: !!photoUrl, photoId: photoId, photoUrl: photoUrl, photoSizeKb: sizeKb });
+
+  } catch (err) {
+    logActivity_({
+      action: 'Photo',
+      sheetId: sheetId,
+      total: secondsSince_(startTime),
+      photoSizeKb: 0,
+      status: 'ERROR',
+      submissionId: photoId,
+      error: String(err)
+    });
+    return json({ ok: false, error: String(err) });
+  }
+}
+
+/**
+ * Where this run's photo lives, in the order that costs least: a URL the client already
+ * holds, the one cached against its id when the reply went missing, or - if neither
+ * survived - the bytes carried on the run, uploaded here the way it always used to work.
+ */
+function resolvePhoto_(body, id) {
+  const given = String(body.photoUrl || '');
+  if (given.indexOf(PHOTO_URL_PREFIX) === 0) {
+    return { url: given, sizeKb: Number(body.photoSizeKb) || 0, created: false };
+  }
+
+  if (body.photoId) {
+    const stored = CacheService.getScriptCache().get('photo:' + String(body.photoId));
+    if (stored) {
+      const parts = stored.split('|');
+      return { url: parts[0], sizeKb: Number(parts[1]) || 0, created: false };
+    }
+  }
+
+  if (body.photoBase64) {
+    const url = savePhoto_(id, body.photoBase64);
+    return {
+      url: url,
+      sizeKb: Math.round(body.photoBase64.length * 0.75 / 1024),
+      created: !!url
+    };
+  }
+
+  return { url: '', sizeKb: 0, created: false };
+}
 
 function savePhoto_(id, dataUrl) {
   if (!DRIVE_FOLDER_ID) return '';

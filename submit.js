@@ -177,6 +177,32 @@ const SheetSubmit = (() => {
     return sent;
   }
 
+  /**
+   * Sends one photo on its own, as soon as it is taken, so the run that follows carries an
+   * id instead of half a megabyte of base64 and never waits on Drive.
+   *
+   * The id is minted here rather than read out of the reply, because the reply is the part
+   * that can go missing: Apps Script answers through a redirect, and where that second hop
+   * fails the file is still stored and the server can still find it by id.
+   */
+  async function uploadPhoto(sheetId, photoBase64) {
+    if (!isConfigured()) throw new Error('ENDPOINT is not set in submit.js');
+
+    const photoId = newId();
+    const data = await postWithRetry({
+      action: 'photo',
+      photoId: photoId,
+      sheetId: sheetId,
+      photoBase64: photoBase64,
+    });
+
+    return {
+      photoId: photoId,
+      photoUrl: data.photoUrl || '',
+      photoSizeKb: data.photoSizeKb || 0,
+    };
+  }
+
   /** Fetches Config from the target copy through the shared central Apps Script deployment. */
   async function fetchMetadata(sheetId) {
     if (!isConfigured()) return { ok: false, error: 'Endpoint not configured' };
@@ -189,6 +215,7 @@ const SheetSubmit = (() => {
 
   return {
     submit,
+    uploadPhoto,
     flush,
     fetchMetadata,
     isConfigured,

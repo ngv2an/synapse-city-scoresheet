@@ -102,8 +102,14 @@ const SynapseScoresheet = (() => {
   let scoreState = {};
   // leanbotState maps botId to boolean (checked for CRL)
   let leanbotState = {};
-  // Compressed data URL of the mission photo, sent along with the score
+  // Compressed data URL of the mission photo, kept as the fallback the run can still carry
   let currentPhotoDataUrl = '';
+  // Set once the photo has gone up on its own, ahead of the run that references it
+  let currentPhotoId = '';
+  let currentPhotoUrl = '';
+  let currentPhotoUploadKb = 0;
+  // The upload in flight, so Submit waits out what is left of it rather than starting over
+  let currentPhotoUpload = null;
   // Smaller copy of the same photo, the one that goes into this device's history
   let currentPhotoThumbUrl = '';
   // { width, height, bytes } for each of the two, measured once when the photo is taken
@@ -588,7 +594,7 @@ const SynapseScoresheet = (() => {
       tryCount: submission.tryCount,
       scores: Object.assign({}, scoreState),
       leanbots: Object.assign({}, leanbotState),
-      hasPhoto: !!submission.photoBase64,
+      hasPhoto: !!(submission.photoBase64 || submission.photoUrl),
       photo: currentPhotoThumbUrl,
       photoInfo: currentPhotoInfo ? Object.assign({}, currentPhotoInfo) : null,
       photoPreview: currentPhotoThumbInfo ? Object.assign({}, currentPhotoThumbInfo) : null
@@ -986,7 +992,35 @@ const SynapseScoresheet = (() => {
     currentPhotoThumbUrl = '';
     currentPhotoInfo = null;
     currentPhotoThumbInfo = null;
+    currentPhotoId = '';
+    currentPhotoUrl = '';
+    currentPhotoUploadKb = 0;
+    currentPhotoUpload = null;
     renderPhotoMeta_();
+  }
+
+  /**
+   * Fired the moment the photo is ready, not when Submit is pressed. Creating the Drive
+   * file costs about 2.4 seconds and does not depend on the score, so it belongs in the
+   * minutes the judge spends scoring rather than in the wait after they finish.
+   *
+   * Never rejects: a failure here just leaves the run carrying the photo itself, which is
+   * how it worked before this existed.
+   */
+  function startPhotoUpload_(dataUrl) {
+    if (isDemoMode_()) return null;
+
+    return SheetSubmit.uploadPhoto(getActiveSheetId(), dataUrl)
+      .then((stored) => {
+        currentPhotoId = stored.photoId;
+        currentPhotoUrl = stored.photoUrl;
+        currentPhotoUploadKb = stored.photoSizeKb;
+      })
+      .catch(() => {
+        currentPhotoId = '';
+        currentPhotoUrl = '';
+        currentPhotoUploadKb = 0;
+      });
   }
 
   function renderPhotoMeta_() {
@@ -1661,6 +1695,13 @@ const SynapseScoresheet = (() => {
     const totalScore = getTotalScore();
     if (totalScore === 0 && !window.confirm('Total score is 0. Submit anyway?')) return;
 
+    // Usually finished long ago, while the judge was still scoring; this waits out only
+    // whatever is left of it. The spinner goes up first so the pause is never silent.
+    if (currentPhotoUpload) {
+      setSubmitLoadingState(true);
+      await currentPhotoUpload;
+    }
+
     const deviceId = getOrCreateDeviceId();
     const sheetId = getActiveSheetId();
     const submission = {
@@ -1673,7 +1714,12 @@ const SynapseScoresheet = (() => {
       missionTime: validation.missionTime,
       tryCount: validation.tryCount,
       scores: Object.assign({}, scoreState, leanbotState),
-      photoBase64: currentPhotoDataUrl,
+      photoId: currentPhotoId,
+      photoUrl: currentPhotoUrl,
+      photoSizeKb: currentPhotoUrl ? currentPhotoUploadKb : 0,
+      // Only sent when the photo never made it up on its own - half a megabyte the server
+      // would otherwise have to take delivery of while the judge waits.
+      photoBase64: currentPhotoUrl ? '' : currentPhotoDataUrl,
     };
     const historyEntry = createSubmissionHistoryEntry_(submission);
 
@@ -1838,6 +1884,7 @@ const SynapseScoresheet = (() => {
           currentPhotoDataUrl = photo.dataUrl;
           currentPhotoInfo = { width: photo.width, height: photo.height, bytes: photo.bytes };
           renderPhotoMeta_();
+          currentPhotoUpload = startPhotoUpload_(photo.dataUrl);
 
           const previewImg = document.getElementById('photo-preview');
           const container = document.getElementById('photo-container');
