@@ -54,6 +54,20 @@ const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C';
 const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
 
 /**
+ * Ranking layout: Team ID, then five columns for Round 1, one blank column, then the same
+ * five for Round 2. Two header rows, the upper one naming the two blocks.
+ *
+ * Normalized Score sits third in each block and is the one column a rebuild never writes.
+ */
+const RANKING_SHEET_PREFIX = 'Ranking - ';
+const RANKING_ROUND_COLUMNS = ['Submission', 'Raw Score', 'Normalized Score', 'Time', 'Try'];
+const RANKING_HEADER_ROW = 2;
+const RANKING_FIRST_DATA_ROW = RANKING_HEADER_ROW + 1;
+const RANKING_ROUND1_COLUMN = 2;
+const RANKING_SPACER_COLUMN = RANKING_ROUND1_COLUMN + RANKING_ROUND_COLUMNS.length;
+const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
+
+/**
  * Two questions were being asked of Sheets on every single submit, inside the lock, and
  * both have the same answer they had twelve seconds earlier: which level is this file, and
  * does its Scores tab still have the layout this code writes. Reading the Config tab for
@@ -1214,6 +1228,182 @@ function threshold_(range, atLeast, style) {
     .setFontColor(style.color)
     .setRanges([range])
     .build();
+}
+
+/**
+ * One row per team, one block of five columns per round, in a 'Ranking - <Level>' tab
+ * beside the Scores tab it is built from.
+ *
+ * Rebuilt on demand rather than kept live. A formula version would recalculate on every
+ * appended row, which is every submit, and this reads the whole Scores tab to do its work.
+ * Run it from the editor when you want the standings, or point a time-driven trigger at
+ * buildRankingSheets().
+ *
+ * Normalized Score is left untouched, both columns of it. Nothing in this project defines
+ * how a score is normalised, so that column belongs to whoever decides - and a rebuild
+ * that wiped their formula would be worse than no rebuild at all.
+ */
+function buildRankingSheet(sheetId) {
+  const ss = SpreadsheetApp.openById(resolveSheetId_(sheetId || DEFAULT_SHEET_ID));
+  const levelTitle = getScoreLevelTitle_(ss);
+  const scores = findScoreSheet_(ss, SCORE_SHEET_PREFIX + levelTitle);
+
+  if (!scores) throw new Error('No "' + SCORE_SHEET_PREFIX + levelTitle + '" tab in this file.');
+
+  const runs = readLatestRuns_(scores);
+  // Exactly the Config list, in Config order. The ranking is the roster, so a team with no
+  // run yet still gets its row and nothing outside Config gets one at all.
+  const teams = readConfig_(ss).teams;
+  const name = RANKING_SHEET_PREFIX + levelTitle;
+  const sheet = ss.getSheetByName(name) || ss.insertSheet(name);
+
+  writeRankingHeaders_(sheet);
+  writeRankingRows_(sheet, teams, runs);
+  return sheet;
+}
+
+/**
+ * The last run each team made in each round, and how many they made.
+ *
+ * Latest is decided by the timestamp in column A rather than by position, so a Scores tab
+ * somebody sorted by hand still reports the right run; position only breaks ties.
+ *
+ * Columns are found by header name, not by number. This tab has been widened twice already
+ * and reading it by position is how a migration turns into wrong standings.
+ */
+function readLatestRuns_(sheet) {
+  const data = sheet.getDataRange().getValues();
+  const runs = {};
+  if (data.length < 2) return runs;
+
+  const header = data[0].map(function (value) { return cellText_(value); });
+  const columnOf = function (names) {
+    for (let i = 0; i < names.length; i++) {
+      const at = header.indexOf(names[i]);
+      if (at !== -1) return at;
+    }
+    return -1;
+  };
+
+  const teamAt = columnOf(['Team ID', 'Team']);
+  const roundAt = columnOf(['Round']);
+  const scoreAt = columnOf(['Score']);
+  const stampAt = columnOf(['Submission Time']);
+  const missionAt = columnOf(['Time']);
+  const tryAt = columnOf(['Try']);
+
+  if (teamAt === -1 || roundAt === -1) {
+    throw new Error('The Scores tab needs a Team and a Round column to rank by.');
+  }
+
+  for (let r = 1; r < data.length; r++) {
+    const team = cellText_(data[r][teamAt]);
+    const round = cellText_(data[r][roundAt]);
+    // A run with no round belongs in neither block - a test sent before Round 1 opened.
+    if (!team || !round) continue;
+
+    const key = team + '\t' + round;
+    const entry = runs[key] || (runs[key] = { count: 0, stamp: -1, order: -1 });
+    entry.count += 1;
+
+    const when = stampAt === -1 ? null : data[r][stampAt];
+    const stamp = Object.prototype.toString.call(when) === '[object Date]' ? when.getTime() : 0;
+    if (stamp < entry.stamp || (stamp === entry.stamp && r < entry.order)) continue;
+
+    entry.stamp = stamp;
+    entry.order = r;
+    entry.score = scoreAt === -1 ? '' : Number(data[r][scoreAt]) || 0;
+    entry.mission = missionAt === -1 ? '' : cellText_(data[r][missionAt]);
+    entry.tries = tryAt === -1 ? '' : cellText_(data[r][tryAt]);
+  }
+
+  return runs;
+}
+
+function writeRankingHeaders_(sheet) {
+  const width = RANKING_ROUND2_COLUMN + RANKING_ROUND_COLUMNS.length - 1;
+  if (sheet.getMaxColumns() < width) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
+  }
+
+  const group = new Array(width).fill('');
+  group[RANKING_ROUND1_COLUMN - 1] = 'Round 1';
+  group[RANKING_ROUND2_COLUMN - 1] = 'Round 2';
+
+  const labels = new Array(width).fill('');
+  labels[0] = 'Team ID';
+  RANKING_ROUND_COLUMNS.forEach(function (label, i) {
+    labels[RANKING_ROUND1_COLUMN - 1 + i] = label;
+    labels[RANKING_ROUND2_COLUMN - 1 + i] = label;
+  });
+
+  sheet.getRange(1, 1, 2, width).setValues([group, labels]).setFontWeight('bold');
+  sheet.setFrozenRows(RANKING_HEADER_ROW);
+  sheet.setFrozenColumns(1);
+  sheet.setColumnWidth(1, 110);
+  sheet.setColumnWidth(RANKING_SPACER_COLUMN, 24);
+}
+
+function writeRankingRows_(sheet, teams, runs) {
+  const height = Math.max(sheet.getLastRow() - RANKING_HEADER_ROW, teams.length, 0);
+  const needed = RANKING_HEADER_ROW + height;
+  if (height > 0 && sheet.getMaxRows() < needed) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), needed - sheet.getMaxRows());
+  }
+
+  // Cleared column by column rather than as one block, so the two Normalized Score columns
+  // sitting in the middle of each round keep whatever is in them.
+  if (height > 0) {
+    sheet.getRange(RANKING_FIRST_DATA_ROW, 1, height, 1).clearContent();
+    [RANKING_ROUND1_COLUMN, RANKING_ROUND2_COLUMN].forEach(function (column) {
+      sheet.getRange(RANKING_FIRST_DATA_ROW, column, height, 2).clearContent();
+      sheet.getRange(RANKING_FIRST_DATA_ROW, column + 3, height, 2).clearContent();
+    });
+  }
+
+  if (!teams.length) return;
+
+  sheet.getRange(RANKING_FIRST_DATA_ROW, 1, teams.length, 1)
+    .setValues(teams.map(function (team) { return [team]; }));
+
+  [['1', RANKING_ROUND1_COLUMN], ['2', RANKING_ROUND2_COLUMN]].forEach(function (round) {
+    const cells = teams.map(function (team) {
+      const entry = runs[team + '\t' + round[0]];
+      return entry ? [entry.count, entry.score, entry.mission, entry.tries] : ['', '', '', ''];
+    });
+
+    sheet.getRange(RANKING_FIRST_DATA_ROW, round[1], teams.length, 2)
+      .setValues(cells.map(function (c) { return [c[0], c[1]]; }));
+    sheet.getRange(RANKING_FIRST_DATA_ROW, round[1] + 3, teams.length, 2)
+      .setValues(cells.map(function (c) { return [c[2], c[3]]; }));
+  });
+}
+
+/**
+ * The Run button takes a function name and no arguments, so each file gets its own entry
+ * in the dropdown - the same shape the resetConfig wrappers use.
+ */
+function buildRankingExplorer() {
+  return buildRankingSheet(LEVEL_SHEET_IDS[0][1]);
+}
+
+function buildRankingCreator() {
+  return buildRankingSheet(LEVEL_SHEET_IDS[1][1]);
+}
+
+function buildRankingInnovator() {
+  return buildRankingSheet(LEVEL_SHEET_IDS[2][1]);
+}
+
+function buildRankingMaster() {
+  return buildRankingSheet(LEVEL_SHEET_IDS[3][1]);
+}
+
+/** All four at once, and what a time-driven trigger should be pointed at. */
+function buildRankingSheets() {
+  LEVEL_SHEET_IDS.forEach(function (entry) {
+    buildRankingSheet(entry[1]);
+  });
 }
 
 /**
