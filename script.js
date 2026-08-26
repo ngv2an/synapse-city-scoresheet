@@ -1141,6 +1141,18 @@ const SynapseScoresheet = (() => {
     return typeof SheetSubmit === 'undefined' ? 0 : SheetSubmit.pending();
   }
 
+  /**
+   * ' - 4820 ms', appended to whatever the submit ended up saying.
+   *
+   * The Logs tab measures the server only: its Total is fixed before the run has written
+   * its log row, produced a response, or answered the redirect Apps Script replies with,
+   * and it never sees the upload at all. This is the number the judge actually waits
+   * through, so the gap between the two is where all of that lives.
+   */
+  function elapsedNote_(sentAt) {
+    return ' - ' + (Date.now() - sentAt) + ' ms';
+  }
+
   function setSubmitStatus(message, tone) {
     const el = document.getElementById('submit-status');
     if (!el) return;
@@ -1684,6 +1696,8 @@ const SynapseScoresheet = (() => {
     setSubmitStatus('', null);
     setSubmitLoadingState(true);
 
+    const sentAt = Date.now();
+
     try {
       // Competition and level are read from Config by the server, rather than trusted from
       // values sent by the scoring device.
@@ -1693,14 +1707,15 @@ const SynapseScoresheet = (() => {
       if (result.duplicate && !result.viaRetry) {
         const historyWarning = historySaved ? '' : ' History could not be saved on this device.';
         setSubmitStatus(
-          'This run was already recorded.' + historyWarning,
+          'This run was already recorded.' + historyWarning + elapsedNote_(sentAt),
           historySaved ? 'ok' : 'warn'
         );
       } else {
         const where = result.row ? ' - row ' + result.row : '';
         const historyWarning = historySaved ? '' : ' History could not be saved on this device.';
         setSubmitStatus(
-          'Submitted "' + validation.team + '"' + where + '.' + historyWarning,
+          'Submitted "' + validation.team + '"' + where + '.' + historyWarning
+            + elapsedNote_(sentAt),
           historySaved ? 'ok' : 'warn'
         );
       }
@@ -1711,11 +1726,12 @@ const SynapseScoresheet = (() => {
         const historySaved = saveSubmissionHistoryEntry_(historyEntry, 'queued', null);
         const historyWarning = historySaved ? '' : ' History could not be saved.';
         setSubmitStatus(
-          'Saved on this device (' + pending + ' waiting), ' + err.message + historyWarning,
+          'Saved on this device (' + pending + ' waiting), ' + err.message + historyWarning
+            + elapsedNote_(sentAt),
           'warn'
         );
       } else {
-        setSubmitStatus('Submit failed: ' + err.message, 'error');
+        setSubmitStatus('Submit failed: ' + err.message + elapsedNote_(sentAt), 'error');
         showError_('Submitting a run', err);
       }
 
