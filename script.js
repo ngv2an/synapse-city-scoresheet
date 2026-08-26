@@ -253,7 +253,7 @@ const SynapseScoresheet = (() => {
       'Sheet  : ' + safely_(getStorageScope_),
       'Level  : ' + safely_(() => activeLevel),
       'Judge  : ' + safely_(getSelectedJudge),
-      'Team   : ' + safely_(getSelectedTeam),
+      'Team ID: ' + safely_(getSelectedTeam),
       'Queued : ' + safely_(pendingCount),
       'Page   : ' + safely_(() => window.location.href),
       'Browser: ' + safely_(() => navigator.userAgent)
@@ -703,7 +703,7 @@ const SynapseScoresheet = (() => {
       ['Competition Date', entry.competitionDate || '-'],
       ['Level', level || '-'],
       ['Judge', entry.judge || '-'],
-      ['Team', entry.team || '-'],
+      ['Team ID', entry.team || '-'],
       ['Round', round],
       ['Time', entry.missionTime || '-'],
       ['Try', entry.tryCount === undefined ? '-' : entry.tryCount],
@@ -1605,7 +1605,7 @@ const SynapseScoresheet = (() => {
       const currentVal = getSelectedTeam() || restoredTeam;
       // Appended rather than listed in Config, so every copy has it and none can lose it.
       const teams = data.teams.filter((t) => t !== TEST_TEAM).concat([TEST_TEAM]);
-      let opts = '<option value="">-- Select Team --</option>';
+      let opts = '<option value="">-- Select Team ID --</option>';
       teams.forEach((t) => {
         opts += `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`;
       });
@@ -1649,7 +1649,7 @@ const SynapseScoresheet = (() => {
     }
 
     if (!team) {
-      reasons.push('Team is required.');
+      reasons.push('Team ID is required.');
       if (!focusTarget) focusTarget = document.getElementById('team-select');
     }
 
