@@ -58,6 +58,9 @@ const SynapseScoresheet = (() => {
   const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
   const DEFAULT_MISSION_TIME = '2:00.00';
+  // Always the last team on the list, whatever Config holds. A run under this name is a
+  // pipeline check, so it is the one team allowed to submit before Round 1 opens.
+  const TEST_TEAM = 'Test Submission';
 
   const HISTORY_MISSION_NAMES = {
     containment: 'Containment',
@@ -1445,8 +1448,10 @@ const SynapseScoresheet = (() => {
     const teamSelect = document.getElementById('team-select');
     if (teamSelect && Array.isArray(data.teams)) {
       const currentVal = getSelectedTeam() || restoredTeam;
+      // Appended rather than listed in Config, so every copy has it and none can lose it.
+      const teams = data.teams.filter((t) => t !== TEST_TEAM).concat([TEST_TEAM]);
       let opts = '<option value="">-- Select Team --</option>';
-      data.teams.forEach((t) => {
+      teams.forEach((t) => {
         opts += `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`;
       });
       teamSelect.innerHTML = opts;
@@ -1460,6 +1465,10 @@ const SynapseScoresheet = (() => {
     let focusTarget = null;
     let round = '';
 
+    // Read before the schedule check: a test run is the one that may go before Round 1.
+    const team = getSelectedTeam();
+    const isTestRun = team === TEST_TEAM;
+
     const expectedDate = parseConfigDate(competitionInfo.competitionDate);
     const schedule = getConfiguredSchedule();
     if (!expectedDate || !schedule.valid) {
@@ -1470,11 +1479,12 @@ const SynapseScoresheet = (() => {
       const state = resolveRound(now);
       if (state.ended) {
         reasons.push('End Time ' + competitionInfo.endTime + ' has passed.');
-      } else if (!state.current) {
-        reasons.push('Round 1 has not started. Start time is ' + schedule.round1.time + '.');
-      } else {
+      } else if (state.current) {
         round = state.current.round;
+      } else if (!isTestRun) {
+        reasons.push('Round 1 has not started. Start time is ' + schedule.round1.time + '.');
       }
+      // A test run before Round 1 leaves Round blank - there is no round to name yet.
     }
 
     const judge = getSelectedJudge();
@@ -1483,7 +1493,6 @@ const SynapseScoresheet = (() => {
       focusTarget = document.getElementById('judge-select');
     }
 
-    const team = getSelectedTeam();
     if (!team) {
       reasons.push('Team is required.');
       if (!focusTarget) focusTarget = document.getElementById('team-select');
