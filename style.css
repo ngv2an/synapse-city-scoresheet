@@ -342,6 +342,33 @@ body {
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.18);
 }
 
+/* No judge picked yet, where there is more than one to pick from. The teams below belong
+   to whichever judge is chosen, so until one is there is nothing truthful to score against.
+
+   Dimmed and untappable as a block rather than disabled control by control: the submit
+   flow already owns `disabled` on the Submit button, and two owners of one property is how
+   a button ends up stuck off. The matching `inert` attribute stops the keyboard. */
+.is-judge-locked {
+  opacity: 0.4;
+  filter: grayscale(0.45);
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.judge-gate-hint {
+  width: min(100%, 420px);
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: clamp(10px, 2.6vw, 12px);
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+}
+
 /* Try: four common one-tap answers, followed by a box for counts above 4. */
 .try-control {
   display: flex;

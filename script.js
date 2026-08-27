@@ -148,6 +148,8 @@ const SynapseScoresheet = (() => {
   // Every team in Config, and - where Config groups them - which judge each one belongs to.
   let allTeams = [];
   let teamRoster = null;
+  // How many judges Config offers, which is what decides whether there is a choice to make.
+  let judgeCount = 0;
   let historyCleanupTicker = null;
   let historyLastFocus = null;
   let timetableTicker = null;
@@ -1751,7 +1753,9 @@ const SynapseScoresheet = (() => {
     teamRoster = data.teamsByJudge && typeof data.teamsByJudge === 'object'
       ? data.teamsByJudge
       : null;
+    judgeCount = Array.isArray(data.judges) ? data.judges.length : 0;
     renderTeamOptions_();
+    applyJudgeGate_();
   }
 
   /**
@@ -1792,28 +1796,70 @@ const SynapseScoresheet = (() => {
     return done;
   }
 
-  /** Rebuilt whenever the judge changes, keeping the current pick only if it survives. */
+  /**
+   * Rebuilt whenever the judge changes, keeping the current pick only if it survives.
+   *
+   * The test team heads the list and stands in for the old "-- Select Team ID --" row, so
+   * the option sitting there by default is the one run that changes no standings.
+   *
+   * That does trade one guard for another. There is no longer an empty pick for Submit to
+   * refuse, so a judge who forgets the team files a test run instead of being stopped - and
+   * a test run is harmless, where the old blank was merely loud.
+   */
   function renderTeamOptions_() {
     const teamSelect = document.getElementById('team-select');
     if (!teamSelect) return;
 
     const currentVal = getSelectedTeam() || restoredTeam;
-    // Appended rather than listed in Config, so every copy has it and no judge lacks it.
-    const teams = teamsForJudge_(getSelectedJudge())
-      .filter((t) => t !== TEST_TEAM)
-      .concat([TEST_TEAM]);
+    // Put in here rather than listed in Config, so every copy has it and no judge lacks it.
+    const teams = [TEST_TEAM].concat(
+      teamsForJudge_(getSelectedJudge()).filter((t) => t !== TEST_TEAM)
+    );
 
     // The suffix is on the label only. The value stays the bare team, so nothing further
     // down - draft, history, the row on the Sheet - ever sees it.
     const submitted = submittedTeamsThisRound_();
-    let opts = '<option value="">-- Select Team ID --</option>';
+    let opts = '';
     teams.forEach((t) => {
       const label = submitted[t] ? t + ' - submitted' : t;
       opts += `<option value="${escapeHtml(t)}">${escapeHtml(label)}</option>`;
     });
     teamSelect.innerHTML = opts;
-    teamSelect.value = optionExists(teamSelect, currentVal) ? currentVal : '';
+    // No blank row left to fall back on, so an unknown pick lands on the test team rather
+    // than on selectedIndex -1, which shows an empty box that cannot be explained.
+    teamSelect.value = optionExists(teamSelect, currentVal) ? currentVal : TEST_TEAM;
     restoredTeam = teamSelect.value;
+  }
+
+  // Everything a run is entered into. The Judge select and Reload Config are deliberately
+  // outside it - one is how you get past the gate - and so is History, which is a record of
+  // runs already made rather than part of making one.
+  const RUN_SECTIONS = '.run-entry-panel, .table-wrap, .score-action-bar, .submit-section';
+
+  /**
+   * Locks the run form until a judge is picked, and only where there is a pick to make.
+   *
+   * One judge is filled in automatically by applyMetadata, so there is nothing to wait for
+   * and nothing is locked. Several judges means the teams below belong to whichever one is
+   * chosen: entering a score first is entering it against a list that is still empty.
+   *
+   * Done with a class and `inert` rather than `disabled` on each control. The submit flow
+   * already owns `disabled` on the Submit button and the photo control, and two owners of
+   * one property is how a button ends up stuck off after an error.
+   */
+  function applyJudgeGate_() {
+    const locked = judgeCount > 1 && !getSelectedJudge();
+
+    document.querySelectorAll(RUN_SECTIONS).forEach((section) => {
+      section.classList.toggle('is-judge-locked', locked);
+      // pointer-events in the stylesheet stops taps; this is what stops the keyboard and
+      // takes the locked controls out of the accessibility tree with them.
+      if (locked) section.setAttribute('inert', '');
+      else section.removeAttribute('inert');
+    });
+
+    const hint = document.getElementById('judge-gate-hint');
+    if (hint) hint.hidden = !locked;
   }
 
   function validateSubmission(now) {
@@ -2159,6 +2205,7 @@ const SynapseScoresheet = (() => {
 
         // A different judge scores different teams, so the list below has to follow.
         renderTeamOptions_();
+        applyJudgeGate_();
       });
     }
 
