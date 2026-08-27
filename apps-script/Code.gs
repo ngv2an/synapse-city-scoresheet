@@ -1169,12 +1169,24 @@ function argumentSeparator_(sheet) {
  * The formulas read A18:A downward rather than whole columns, which keeps the dashboard's
  * own labels out of its own totals - text sorts above every number in a comparison, so a
  * whole-column FILTER would sweep these rows into the throughput figures.
+ *
+ * Which day they report on comes from B2, so any past day can be read without editing a
+ * formula. The log rows themselves are never trimmed, so every day the event ran is still
+ * down there to be looked at.
  */
 function buildLogDashboard_(sheet) {
   const sep = argumentSeparator_(sheet);
   const first = LOG_FIRST_DATA_ROW;
   const col = (letter) => letter + first + ':' + letter;
-  const today = col('A') + sep + '">="&TODAY()';
+
+  // Blank falls back to today rather than to 1899: an empty cell is zero to a date
+  // comparison, and every dashboard number would read as the whole event so far.
+  const day = 'IF($B$2=""' + sep + 'TODAY()' + sep + '$B$2)';
+  // Both ends of the day now. '>=TODAY()' on its own was open-ended and only ever read as
+  // one day because no row can be stamped in the future - which stops being true the
+  // moment the day being asked about is not the last one.
+  const onDay = col('A') + sep + '">="&' + day + sep + col('A') + sep + '"<"&' + day + '+1';
+  const inDay = col('A') + '>=' + day + sep + col('A') + '<' + day + '+1';
 
   // Row numbers are referenced by the derived formulas below, so this layout is fixed.
   // Decimals are written as fractions on purpose: '0.95' is a parse error wherever ','
@@ -1182,35 +1194,36 @@ function buildLogDashboard_(sheet) {
   const rows = [
     [sheet.getName(), '', 'Dashboard above, log rows from ' + first
       + ' down. Rebuild with buildMonitorSheets().'],
-    ['', '', ''],
-    ['TODAY', 'Value', 'Watch'],
+    ['Show date', '=TODAY()',
+      'Pick any past date here. Rebuilding the dashboard sets it back to today.'],
+    ['ON DATE', 'Value', 'Watch'],
     ['Submissions',
-      '=COUNTIFS(' + col('B') + sep + '"Submit"' + sep + col('J') + sep + '"OK"' + sep + today + ')',
+      '=COUNTIFS(' + col('B') + sep + '"Submit"' + sep + col('J') + sep + '"OK"' + sep + onDay + ')',
       'Runs that reached the sheet, retries excluded'],
-    ['Config loads', '=COUNTIFS(' + col('B') + sep + '"Config"' + sep + today + ')',
+    ['Config loads', '=COUNTIFS(' + col('B') + sep + '"Config"' + sep + onDay + ')',
       'Metadata reads - no lock taken and no Drive file created'],
     ['Retries (duplicate)',
-      '=COUNTIFS(' + col('B') + sep + '"Submit"' + sep + col('J') + sep + '"DUPLICATE"' + sep + today + ')',
+      '=COUNTIFS(' + col('B') + sep + '"Submit"' + sep + col('J') + sep + '"DUPLICATE"' + sep + onDay + ')',
       'Extra executions from replies the client lost'],
     ['Retry rate', '=IFERROR(B6/(B4+B6)' + sep + '0)', 'Over 10% - look at the venue network'],
-    ['Errors', '=COUNTIFS(' + col('J') + sep + '"ERROR"' + sep + today + ')',
+    ['Errors', '=COUNTIFS(' + col('J') + sep + '"ERROR"' + sep + onDay + ')',
       'Any row below is worth reading'],
-    ['Photos created', '=COUNTIFS(' + col('I') + sep + '">0"' + sep + today + ')',
+    ['Photos created', '=COUNTIFS(' + col('I') + sep + '">0"' + sep + onDay + ')',
       'One Drive file each - the only cap this app spends per day'],
     ['Quota used', '=IFERROR(B9/' + PHOTO_QUOTA_PER_DAY + sep + '0)',
       'Of ' + PHOTO_QUOTA_PER_DAY + '/day on Workspace; 250 on a consumer account'],
-    ['Upload size (MB)', '=ROUND(SUMIFS(' + col('I') + sep + today + ')/1024' + sep + '1)',
+    ['Upload size (MB)', '=ROUND(SUMIFS(' + col('I') + sep + onDay + ')/1024' + sep + '1)',
       'Reference only - storage is not the limit'],
     ['p95 Work (s)',
       '=IFERROR(PERCENTILE(FILTER(' + col('H') + sep + col('B') + '="Submit"' + sep
-        + col('J') + '="OK"' + sep + col('A') + '>=TODAY())' + sep + '95/100)' + sep + '0)',
+        + col('J') + '="OK"' + sep + inDay + ')' + sep + '95/100)' + sep + '0)',
       'Time spent holding the script lock - photos upload before it is taken'],
     ['Capacity (submits/min)', '=IFERROR(60/B12' + sep + '0)',
       'For the whole deployment, all four files'],
     ['Burst headroom (judges)', '=IFERROR(INT(30/B12)+1' + sep + '0)',
       'Submitting at once before one hits the 30s lock timeout'],
     ['Longest lock wait (s)',
-      '=IFERROR(MAX(FILTER(' + col('G') + sep + col('A') + '>=TODAY()))' + sep + '0)',
+      '=IFERROR(MAX(FILTER(' + col('G') + sep + inDay + '))' + sep + '0)',
       'Approaching 30 means the next judge gets refused']
   ];
 
@@ -1218,9 +1231,31 @@ function buildLogDashboard_(sheet) {
   sheet.getRange(1, 1, rows.length, 3).setValues(rows);
 
   sheet.getRange('A1').setFontWeight('bold').setFontSize(13);
+  sheet.getRange('A2').setFontWeight('bold');
   sheet.getRange('A3:C3').setFontWeight('bold');
   sheet.getRange('B4:B15').setHorizontalAlignment('right');
   sheet.getRange('C1:C15').setFontColor('#64748b');
+
+  // Boxed because it is the one cell here meant to be typed in; everything else is output.
+  // The pattern is written in the API's own tokens, which do not follow the file's locale.
+  //
+  // The date rule is what puts a calendar on a double click, which is the point of it. It
+  // warns rather than refuses: refusing would also refuse the '=TODAY()' this very function
+  // writes on the next rebuild, and a warning triangle already says enough.
+  sheet.getRange('B2')
+    .setNumberFormat('yyyy-mm-dd')
+    .setHorizontalAlignment('right')
+    .setFontWeight('bold')
+    .setBackground('#fffbeb')
+    .setBorder(true, true, true, true, false, false, '#d97706',
+      SpreadsheetApp.BorderStyle.SOLID)
+    .setDataValidation(
+      SpreadsheetApp.newDataValidation()
+        .requireDate()
+        .setAllowInvalid(true)
+        .setHelpText('Pick the day to report on. Clear the cell to fall back to today.')
+        .build()
+    );
 
   // Column C is narrow because the log's Level column shares it; the hints spill into the
   // empty cells to their right, which is why nothing else is written in D:L up here.
