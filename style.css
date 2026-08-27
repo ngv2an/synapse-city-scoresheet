@@ -359,6 +359,20 @@ body {
   transition: opacity 0.15s ease;
 }
 
+/* Time and Try are .entry-row, and .entry-row is display:contents - it generates no box,
+   so there is nothing for opacity to paint. Only pointer-events was getting through, since
+   that one is inherited, which is why those two rows went dead without going grey while the
+   score tables beside them dimmed. Their children do have boxes. */
+.entry-row.is-run-locked > * {
+  opacity: 0.62;
+  transition: opacity 0.15s ease;
+}
+
+.entry-row.is-judge-locked > * {
+  opacity: 0.4;
+  filter: grayscale(0.45);
+}
+
 .judge-gate-hint {
   width: min(100%, 420px);
   margin: 8px 0 0;
