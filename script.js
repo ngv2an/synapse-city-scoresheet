@@ -830,6 +830,9 @@ const SynapseScoresheet = (() => {
     // Older records, and any whose photo was dropped to make room, keep the flag but not the copy.
     const photoUrl = getHistoryPhotoUrl_(entry);
 
+    // What the run was. How it got there is a table of its own at the bottom: that half is
+    // diagnostic, and someone reading a score back should not have to read past four
+    // durations and an id to find it.
     const fields = [
       ['Submitted', formatHistoryTimestamp_(entry.submittedAt)],
       ['Status', status],
@@ -845,24 +848,28 @@ const SynapseScoresheet = (() => {
       ['Photo', historyPhotoLabel_(entry, photoUrl)]
     ];
 
-    // Every step the judge actually waited through, in the order they happen. The Logs tab
-    // measures only the server's share of the last of them.
+    // How the run got there. Every step the judge actually waited through, in the order
+    // they happen, then what was sent and where it landed. The Logs tab on the Sheet
+    // measures only the server's share of the last of these.
+    //
+    // Every row is always here, '-' when the step did not happen. A run with no photo did
+    // not wait zero seconds for one, and a table that quietly loses rows is one nobody can
+    // compare two runs with.
     const timing = entry.timing && typeof entry.timing === 'object' ? entry.timing : {};
-    [
-      ['Photo Compress', timing.compressMs],
-      ['Photo Upload', timing.uploadMs],
-      ['Waited For Photo', timing.waitMs],
-      ['Submit', timing.submitMs]
-    ].forEach((step) => {
-      if (Number.isFinite(Number(step[1]))) fields.push([step[0], formatDuration_(step[1])]);
-    });
+    const tracking = [
+      ['Photo Compress', formatDuration_(timing.compressMs)],
+      ['Photo Upload', formatDuration_(timing.uploadMs)],
+      ['Waited For Photo', formatDuration_(timing.waitMs)],
+      ['Submit', formatDuration_(timing.submitMs)],
+      // What went to the Sheet, which is not the smaller copy shown above it.
+      ['Photo Size', formatPhotoInfo_(entry.photoInfo)],
+      ['Sheet Row', entry.row],
+      ['Submission ID', entry.submissionId]
+    ];
 
-    // What went to the Sheet, which is not the smaller copy displayed below.
-    const sentInfo = formatPhotoInfo_(entry.photoInfo);
-    if (sentInfo) fields.push(['Photo Size', sentInfo]);
-
-    if (entry.row) fields.push(['Sheet Row', entry.row]);
-    if (entry.submissionId) fields.push(['Submission ID', entry.submissionId]);
+    const trackingHtml = tracking.map((row) => (
+      '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1] || '-') + '</td></tr>'
+    )).join('');
 
     const fieldHtml = fields.map((field) => (
       '<div class="history-detail-field"><span>' + escapeHtml(field[0]) + '</span><strong>'
@@ -897,7 +904,10 @@ const SynapseScoresheet = (() => {
       + '<h3>Mission Scores</h3>'
       + '<div class="history-detail-table-wrap"><table class="history-detail-table"><tbody>'
       + blockHtml + leanbotHtml + '</tbody></table></div>'
-      + photoHtml;
+      + photoHtml
+      + '<h3>Tracking</h3>'
+      + '<div class="history-detail-table-wrap"><table class="history-detail-table"><tbody>'
+      + trackingHtml + '</tbody></table></div>';
   }
 
   function openSubmissionHistory_(id) {

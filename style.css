@@ -1369,6 +1369,9 @@ body.error-modal-open {
 .history-detail-table td:last-child {
   color: #1e40af;
   text-align: right;
+  /* A Submission ID is one long run of characters with nothing to break at, so say it may
+     break anywhere rather than let it push the dialog sideways. */
+  overflow-wrap: anywhere;
 }
 
 /* The stored copy is only 640px wide, so let it fill the dialog rather than upscale past it. */
