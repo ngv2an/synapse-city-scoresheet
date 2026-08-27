@@ -125,6 +125,9 @@ const SynapseScoresheet = (() => {
   let currentPhotoUploadKb = 0;
   // The upload in flight, so Submit waits out what is left of it rather than starting over
   let currentPhotoUpload = null;
+  // How long each step of this photo took. Kept on the run in History because the Logs tab
+  // only ever sees the server's share, and the gap between the two is where the wait lives.
+  let currentPhotoTiming = null;
   // Smaller copy of the same photo, the one that goes into this device's history
   let currentPhotoThumbUrl = '';
   // { width, height, bytes } for each of the two, measured once when the photo is taken
@@ -176,6 +179,14 @@ const SynapseScoresheet = (() => {
 
     const kb = bytes / 1024;
     return kb < 1024 ? Math.round(kb) + ' KB' : (kb / 1024).toFixed(1) + ' MB';
+  }
+
+  /** '840 ms' below a second, '4.6 s' above it - nobody reads '4612 ms' as four seconds. */
+  function formatDuration_(ms) {
+    const value = Number(ms);
+    if (!Number.isFinite(value)) return '';
+
+    return value < 1000 ? Math.round(value) + ' ms' : (value / 1000).toFixed(1) + ' s';
   }
 
   /** "1280 × 960 · 248 KB", or '' for a photo that was never measured. */
@@ -622,7 +633,10 @@ const SynapseScoresheet = (() => {
       hasPhoto: !!(submission.photoBase64 || submission.photoUrl),
       photo: currentPhotoThumbUrl,
       photoInfo: currentPhotoInfo ? Object.assign({}, currentPhotoInfo) : null,
-      photoPreview: currentPhotoThumbInfo ? Object.assign({}, currentPhotoThumbInfo) : null
+      photoPreview: currentPhotoThumbInfo ? Object.assign({}, currentPhotoThumbInfo) : null,
+      // The photo half of the run. The submit half is not known yet and is patched in when
+      // the request comes back.
+      timing: currentPhotoTiming ? Object.assign({}, currentPhotoTiming) : {}
     };
   }
 
@@ -645,7 +659,7 @@ const SynapseScoresheet = (() => {
    * for the same run. The record goes down before the network is touched, so every later
    * outcome - sent, queued, refused - is an edit to a line the judge can already see.
    */
-  function updateSubmissionHistoryEntry_(id, status, result) {
+  function updateSubmissionHistoryEntry_(id, status, result, timing) {
     const entries = readSubmissionHistory_();
     const index = entries.findIndex((item) => item && item.id === id);
     // Missing only when the first write was refused for space, and that was reported then.
@@ -654,7 +668,8 @@ const SynapseScoresheet = (() => {
     entries[index] = Object.assign({}, entries[index], {
       status: status,
       row: result && result.row ? result.row : entries[index].row,
-      submissionId: result && result.submissionId ? result.submissionId : entries[index].submissionId
+      submissionId: result && result.submissionId ? result.submissionId : entries[index].submissionId,
+      timing: Object.assign({}, entries[index].timing, timing)
     });
 
     const saved = writeSubmissionHistory_(entries);
@@ -755,6 +770,18 @@ const SynapseScoresheet = (() => {
       ['Total Score', Number.isFinite(Number(entry.totalScore)) ? Number(entry.totalScore) : 0],
       ['Photo', historyPhotoLabel_(entry, photoUrl)]
     ];
+
+    // Every step the judge actually waited through, in the order they happen. The Logs tab
+    // measures only the server's share of the last of them.
+    const timing = entry.timing && typeof entry.timing === 'object' ? entry.timing : {};
+    [
+      ['Photo Compress', timing.compressMs],
+      ['Photo Upload', timing.uploadMs],
+      ['Waited For Photo', timing.waitMs],
+      ['Submit', timing.submitMs]
+    ].forEach((step) => {
+      if (Number.isFinite(Number(step[1]))) fields.push([step[0], formatDuration_(step[1])]);
+    });
 
     // What went to the Sheet, which is not the smaller copy displayed below.
     const sentInfo = formatPhotoInfo_(entry.photoInfo);
@@ -1048,6 +1075,7 @@ const SynapseScoresheet = (() => {
     currentPhotoUrl = '';
     currentPhotoUploadKb = 0;
     currentPhotoUpload = null;
+    currentPhotoTiming = null;
     renderPhotoMeta_();
   }
 
@@ -1062,16 +1090,20 @@ const SynapseScoresheet = (() => {
   function startPhotoUpload_(dataUrl) {
     if (isDemoMode_()) return null;
 
+    const startedAt = Date.now();
     return SheetSubmit.uploadPhoto(getActiveSheetId(), dataUrl)
       .then((stored) => {
         currentPhotoId = stored.photoId;
         currentPhotoUrl = stored.photoUrl;
         currentPhotoUploadKb = stored.photoSizeKb;
+        if (currentPhotoTiming) currentPhotoTiming.uploadMs = Date.now() - startedAt;
       })
       .catch(() => {
         currentPhotoId = '';
         currentPhotoUrl = '';
         currentPhotoUploadKb = 0;
+        // Recorded even so: how long it took to fail is worth as much as how long it took.
+        if (currentPhotoTiming) currentPhotoTiming.uploadMs = Date.now() - startedAt;
       });
   }
 
@@ -1804,10 +1836,16 @@ const SynapseScoresheet = (() => {
 
     // Usually finished long ago, while the judge was still scoring; this waits out only
     // whatever is left of it. The spinner goes up first so the pause is never silent.
+    const photoWaitAt = Date.now();
+    const hadPhotoUpload = !!currentPhotoUpload;
     if (currentPhotoUpload) {
       setSubmitLoadingState(true);
       await currentPhotoUpload;
     }
+    // Nearly always nothing. A number here means the judge finished scoring before Drive
+    // finished storing, which is the one case the pre-upload cannot help with. Left off the
+    // record entirely for a run with no photo, where a zero would say nothing.
+    const photoWait = hadPhotoUpload ? { waitMs: Date.now() - photoWaitAt } : {};
 
     const deviceId = getOrCreateDeviceId();
     const sheetId = getActiveSheetId();
@@ -1860,7 +1898,8 @@ const SynapseScoresheet = (() => {
       // Competition and level are read from Config by the server, rather than trusted from
       // values sent by the scoring device.
       const result = await SheetSubmit.submit(submission);
-      updateSubmissionHistoryEntry_(historyEntry.id, 'submitted', result);
+      updateSubmissionHistoryEntry_(historyEntry.id, 'submitted', result,
+        Object.assign({ submitMs: Date.now() - sentAt }, photoWait));
 
       if (result.duplicate && !result.viaRetry) {
         const historyWarning = historySaved ? '' : ' History could not be saved on this device.';
@@ -1881,7 +1920,8 @@ const SynapseScoresheet = (() => {
     } catch (err) {
       const pending = pendingCount();
       if (pending > pendingBefore) {
-        updateSubmissionHistoryEntry_(historyEntry.id, 'queued', null);
+        updateSubmissionHistoryEntry_(historyEntry.id, 'queued', null,
+          Object.assign({ submitMs: Date.now() - sentAt }, photoWait));
         const historyWarning = historySaved ? '' : ' History could not be saved.';
         setSubmitStatus(
           'Saved on this device (' + pending + ' waiting), ' + err.message + historyWarning
@@ -1889,7 +1929,8 @@ const SynapseScoresheet = (() => {
           'warn'
         );
       } else {
-        updateSubmissionHistoryEntry_(historyEntry.id, 'failed', null);
+        updateSubmissionHistoryEntry_(historyEntry.id, 'failed', null,
+          Object.assign({ submitMs: Date.now() - sentAt }, photoWait));
         setSubmitStatus('Submit failed: ' + err.message + elapsedNote_(sentAt), 'error');
         showError_('Submitting a run', err);
       }
@@ -1995,9 +2036,12 @@ const SynapseScoresheet = (() => {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
 
+        const takenAt = Date.now();
+
         compressImage(file).then((photo) => {
           currentPhotoDataUrl = photo.dataUrl;
           currentPhotoInfo = { width: photo.width, height: photo.height, bytes: photo.bytes };
+          currentPhotoTiming = { compressMs: Date.now() - takenAt, uploadMs: 0 };
           renderPhotoMeta_();
           currentPhotoUpload = startPhotoUpload_(photo.dataUrl);
 
