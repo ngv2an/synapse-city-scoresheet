@@ -59,6 +59,11 @@ const SynapseScoresheet = (() => {
   const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
   const DEFAULT_MISSION_TIME = '2:00.00';
+  // A run is two minutes. The box opens on the limit itself, which is why the two read
+  // alike. The minute cap is separate and larger on purpose: it guards the shape of the
+  // value rather than the rule, and outlives any change to how long a run lasts.
+  const MISSION_TIME_LIMIT_MS = 120000;
+  const MISSION_TIME_MAX_MINUTES = 59;
   // Always the last team on the list, whatever Config holds. A run under this name is a
   // pipeline check, so it is the one team allowed to submit before Round 1 opens.
   const TEST_TEAM = 'Test Submission';
@@ -1245,6 +1250,47 @@ const SynapseScoresheet = (() => {
    * Build the stopwatch value from left to right as the judge types: 1, 1:2, 1:23,
    * 1:23.4, 1:23.45. Separators are display-only, so pasted/formatted values normalize too.
    */
+  /**
+   * '' when the field holds a usable mission time, otherwise the reason it does not.
+   *
+   * The mask guarantees the shape and nothing else: '2:75.00' types perfectly cleanly and
+   * is not a time, and neither is anything past the two minutes a run is allowed. Both are
+   * caught here rather than at the Sheet, where a bad value is already a row.
+   *
+   * Hundredths may be missing or half-typed; '1:30' is a whole answer and is treated as
+   * one. Seconds may not - a two-digit seconds field is what makes the value readable.
+   */
+  function missionTimeError_(value) {
+    const match = /^(\d{1,2}):(\d{2})(?:\.(\d{1,2}))?$/.exec(String(value).trim());
+    if (!match) return 'Time must be written m:ss.ss.';
+
+    const minutes = Number(match[1]);
+    const seconds = Number(match[2]);
+    if (minutes > MISSION_TIME_MAX_MINUTES) {
+      return 'Minutes must be ' + MISSION_TIME_MAX_MINUTES + ' or less.';
+    }
+    if (seconds > 59) return 'Seconds must be 59 or less.';
+
+    // '.5' is five tenths, so half a second, not five hundredths of one.
+    const hundredths = Number((match[3] || '0').padEnd(2, '0'));
+    if (minutes * 60000 + seconds * 1000 + hundredths * 10 > MISSION_TIME_LIMIT_MS) {
+      return 'Time cannot pass ' + DEFAULT_MISSION_TIME + '.';
+    }
+
+    return '';
+  }
+
+  /** Red on the field, or not, from one place - three callers ask the same question. */
+  function markMissionTime_(input) {
+    if (!input) return '';
+
+    const error = missionTimeError_(input.value);
+    if (error) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+
+    return error;
+  }
+
   function formatMissionTime(raw) {
     const digits = String(raw).replace(/[^0-9]/g, '').slice(0, 5);
     if (!digits) return '';
@@ -1971,6 +2017,12 @@ const SynapseScoresheet = (() => {
       }
     }
 
+    const timeError = markMissionTime_(timeInput);
+    if (timeError) {
+      reasons.push(timeError);
+      if (!focusTarget) focusTarget = timeInput;
+    }
+
     const tryCount = getTryCount();
     if (tryCount === null) {
       reasons.push('Try must be a whole number from 1 to 99.');
@@ -2347,11 +2399,18 @@ const SynapseScoresheet = (() => {
       // Opened and left as it was: the default comes back rather than an empty box.
       timeInput.addEventListener('blur', () => {
         if (!timeInput.value.trim()) timeInput.value = DEFAULT_MISSION_TIME;
+        // Leaving the field ends the typing, so half a value here is simply a wrong one.
+        markMissionTime_(timeInput);
       });
 
       timeInput.addEventListener('input', () => {
         timeInput.value = formatMissionTime(timeInput.value);
-        timeInput.removeAttribute('aria-invalid');
+
+        // Only once the seconds are both there. On '2:7' the field is on its way to '2:75'
+        // and to '2:07' alike, and turning red on the second of those would be wrong.
+        if (/^\d{1,2}:\d{2}/.test(timeInput.value)) markMissionTime_(timeInput);
+        else timeInput.removeAttribute('aria-invalid');
+
         saveDraft();
       });
     }

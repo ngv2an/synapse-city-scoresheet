@@ -468,9 +468,13 @@ body {
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.18);
 }
 
+/* A value the mask accepted and the rules did not: seconds past 59, or a run longer than
+   the two minutes it is allowed. The digits go red too, not just the frame - the frame says
+   "this field", the digits say "this number". */
 .entry-row input[aria-invalid="true"] {
   border-color: #dc2626;
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.16);
+  color: #dc2626;
 }
 
 .entry-row input::placeholder {
