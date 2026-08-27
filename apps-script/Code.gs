@@ -50,18 +50,29 @@ const LOG_FIRST_DATA_ROW = LOG_HEADER_ROW + 1;
 // bite. Storage is not: this counts files, not megabytes.
 const PHOTO_QUOTA_PER_DAY = 1500;
 const SHARED_KEY = '5Utxx6W06WnkEPHIbJYqr3uNBTB9ryeA';
+// Must match ENDPOINT in submit.js. Only the Ranking link needs it: everything else is
+// reached from the client, which already has it.
+const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyFo41U6Hg2bMGknSf9ZtDqYUa6ARHv5wNGWqcN1k7dweK1Eo_OyMWVlUpAyVeGEyWvkQ/exec';
 const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C';
 const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
 
 /**
  * Ranking layout: Team ID, then five columns for Round 1, one blank column, then the same
- * five for Round 2. Two header rows, the upper one naming the two blocks.
+ * five for Round 2. A link row on top, then two header rows, the upper one naming the two
+ * blocks.
+ *
+ * The link row exists because a rebuild is a manual act and the standings are where people
+ * notice they are stale. Putting the rebuild where they are already looking beats asking
+ * them to find the script editor.
  *
  * Normalized Score sits third in each block and is the one column a rebuild never writes.
  */
 const RANKING_SHEET_PREFIX = 'Ranking - ';
 const RANKING_ROUND_COLUMNS = ['Submission', 'Raw Score', 'Normalized Score', 'Time', 'Try'];
-const RANKING_HEADER_ROW = 2;
+const RANKING_LINK_ROW = 1;
+const RANKING_LINK_LABEL = 'Click here to update Ranking';
+const RANKING_GROUP_ROW = RANKING_LINK_ROW + 1;
+const RANKING_HEADER_ROW = RANKING_GROUP_ROW + 1;
 const RANKING_FIRST_DATA_ROW = RANKING_HEADER_ROW + 1;
 const RANKING_ROUND1_COLUMN = 2;
 const RANKING_SPACER_COLUMN = RANKING_ROUND1_COLUMN + RANKING_ROUND_COLUMNS.length;
@@ -1322,6 +1333,8 @@ function buildRankingSheet(sheetId) {
   const name = RANKING_SHEET_PREFIX + levelTitle;
   const sheet = ss.getSheetByName(name) || ss.insertSheet(name);
 
+  ensureRankingLinkRow_(sheet);
+  writeRankingLink_(sheet, ss.getId());
   writeRankingHeaders_(sheet);
   writeRankingRows_(sheet, teams, runs);
   return sheet;
@@ -1385,6 +1398,38 @@ function readLatestRuns_(sheet) {
   return runs;
 }
 
+/**
+ * Makes room for the link row on a tab built before it existed.
+ *
+ * Inserted rather than written over: the Normalized Score columns hold somebody else's
+ * formulas, and those have to move down with the team they belong to. Recognised by the
+ * group header sitting on row 1, which is only true of the old layout, so a rebuild of an
+ * already-migrated tab - or a brand new empty one - does nothing here.
+ */
+function ensureRankingLinkRow_(sheet) {
+  if (cellText_(sheet.getRange(1, RANKING_ROUND1_COLUMN).getValue()) === 'Round 1') {
+    sheet.insertRowBefore(1);
+  }
+}
+
+/**
+ * The rebuild link, written as rich text rather than a HYPERLINK formula: a formula is
+ * parsed in the file's own locale and would need the argument separator probed first,
+ * which is a round trip and a write for something that never changes.
+ *
+ * The key is in the URL, and it is not a secret - submit.js ships it to every browser that
+ * opens the scoresheet. It is here to keep the endpoint from being fired by accident, not
+ * to keep anyone out.
+ */
+function writeRankingLink_(sheet, sheetId) {
+  const url = WEB_APP_URL + '?action=ranking&key=' + encodeURIComponent(SHARED_KEY)
+    + '&sheetId=' + encodeURIComponent(sheetId);
+
+  sheet.getRange(RANKING_LINK_ROW, 1).setRichTextValue(
+    SpreadsheetApp.newRichTextValue().setText(RANKING_LINK_LABEL).setLinkUrl(url).build()
+  );
+}
+
 function writeRankingHeaders_(sheet) {
   const width = RANKING_ROUND2_COLUMN + RANKING_ROUND_COLUMNS.length - 1;
   if (sheet.getMaxColumns() < width) {
@@ -1402,7 +1447,7 @@ function writeRankingHeaders_(sheet) {
     labels[RANKING_ROUND2_COLUMN - 1 + i] = label;
   });
 
-  sheet.getRange(1, 1, 2, width).setValues([group, labels]).setFontWeight('bold');
+  sheet.getRange(RANKING_GROUP_ROW, 1, 2, width).setValues([group, labels]).setFontWeight('bold');
   sheet.setFrozenRows(RANKING_HEADER_ROW);
   sheet.setColumnWidth(1, 110);
   sheet.setColumnWidth(RANKING_SPACER_COLUMN, 24);
