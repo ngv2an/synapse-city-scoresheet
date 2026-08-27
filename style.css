@@ -37,8 +37,7 @@ body {
   display: none;
 }
 
-.config-loading,
-.submit-loading {
+.config-loading {
   position: fixed;
   inset: 0;
   z-index: 2000;
@@ -48,10 +47,6 @@ body {
   padding: 20px;
   background: rgba(231, 235, 239, 0.72);
   backdrop-filter: blur(1px);
-}
-
-.submit-loading[hidden] {
-  display: none;
 }
 
 .config-loading-card {
@@ -355,6 +350,15 @@ body {
   transition: opacity 0.15s ease;
 }
 
+/* Frozen after Submit: the run is on its way, or already recorded, so what it held must
+   not drift out from under it. Dimmed less than the judge gate on purpose - the judge
+   still reads back the numbers they just sent. */
+.is-run-locked {
+  opacity: 0.62;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
 .judge-gate-hint {
   width: min(100%, 420px);
   margin: 8px 0 0;
@@ -518,6 +522,40 @@ body {
   box-shadow: none;
   cursor: default;
   transform: none;
+}
+
+/* The button is the whole report on a send now - there is no modal over it any more - so
+   it carries the colour as well as the words.
+
+   These have to sit after :disabled and not before it. Two of the three states disable the
+   button, they match at the same specificity, and at equal specificity the later rule is
+   the one that paints. */
+.btn-submit.is-sending {
+  border-color: #b45309;
+  background: #d97706;
+  box-shadow: 0 2px 6px rgba(217, 119, 6, 0.3);
+}
+
+.btn-submit.is-done {
+  border-color: #15803d;
+  background: #16a34a;
+  box-shadow: 0 2px 6px rgba(22, 163, 74, 0.3);
+}
+
+.btn-submit.is-queued {
+  border-color: #854d0e;
+  background: #a16207;
+  box-shadow: 0 2px 6px rgba(161, 98, 7, 0.3);
+}
+
+.btn-submit.is-failed {
+  border-color: #b91c1c;
+  background: #dc2626;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3);
+}
+
+.btn-submit.is-failed:active {
+  background: #b91c1c;
 }
 
 .submit-status {

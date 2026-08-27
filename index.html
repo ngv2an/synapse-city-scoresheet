@@ -20,14 +20,6 @@
       </div>
     </div>
 
-    <div class="submit-loading" id="submit-loading" role="dialog" aria-modal="true"
-         aria-labelledby="submit-loading-text" hidden>
-      <div class="config-loading-card">
-        <span class="config-loading-spinner" aria-hidden="true"></span>
-        <span id="submit-loading-text" aria-live="polite">Submitting Result...</span>
-      </div>
-    </div>
-
     <!-- General competition information, centered and without visible labels. -->
     <section class="competition-panel">
       <div class="competition-banner" id="competition-banner"></div>
@@ -69,7 +61,7 @@
         </div>
       </div>
 
-      <div class="entry-row">
+      <div class="entry-row entry-row-time">
         <span class="entry-label entry-label-time" aria-hidden="true">TIME (m:ss.ss)</span>
         <div class="entry-cell">
           <!-- Stays type=text so the mask can hold ':' and '.'; inputmode brings up the
@@ -154,6 +146,8 @@
 
     <!-- Submit to Google Sheet -->
     <section class="submit-section">
+      <!-- Label and colour are both set by script.js: this button is the only report on a
+           send, so it says Submitting / Submitted / Failed to Submit in place of a modal. -->
       <button type="button" class="btn-submit" id="btn-submit">Submit</button>
       <p class="submit-status" id="submit-status" role="status" aria-live="polite"></p>
     </section>

@@ -150,6 +150,9 @@ const SynapseScoresheet = (() => {
   let teamRoster = null;
   // How many judges Config offers, which is what decides whether there is a choice to make.
   let judgeCount = 0;
+  // A run that has been sent, or is on its way. Its numbers are frozen until another team
+  // is picked, so what was submitted cannot quietly become something else.
+  let runLocked = false;
   let historyCleanupTicker = null;
   let historyLastFocus = null;
   let timetableTicker = null;
@@ -1382,9 +1385,52 @@ const SynapseScoresheet = (() => {
     status.className = 'config-loading' + (tone ? ' is-' + tone : '');
   }
 
-  function setSubmitLoadingState(isSubmitting) {
-    const modal = document.getElementById('submit-loading');
-    if (modal) modal.hidden = !isSubmitting;
+  /**
+   * Label, colour, and whether the button can be pressed - one state, one place.
+   *
+   * This replaced a modal over the whole page. The modal said only that something was
+   * happening; the button says what, where the judge is already looking, and leaves the
+   * run visible behind it so the numbers just sent can be read back.
+   */
+  const SUBMIT_BUTTON_STATES = {
+    idle: ['Submit', ''],
+    sending: ['Submitting …', ' is-sending'],
+    done: ['Submitted', ' is-done'],
+    queued: ['Saved Offline', ' is-queued'],
+    failed: ['Failed to Submit', ' is-failed']
+  };
+
+  function setSubmitButtonState_(state) {
+    const btn = document.getElementById('btn-submit');
+    if (!btn) return;
+
+    const spec = SUBMIT_BUTTON_STATES[state] || SUBMIT_BUTTON_STATES.idle;
+    btn.textContent = spec[0];
+    btn.className = 'btn-submit' + spec[1];
+    // Nothing left to press while a run is in flight or already recorded. A failed one is
+    // the opposite: the retry is the whole point of showing it.
+    btn.disabled = state === 'sending' || state === 'done' || state === 'queued';
+  }
+
+  /**
+   * Where every path out of a send ends.
+   *
+   * A run that reached somewhere - the Sheet or the offline queue - stays frozen until
+   * another team is picked. A failed one unfreezes on the spot, because fixing it is the
+   * only thing left to do with it.
+   */
+  function finishSubmit_(state) {
+    runLocked = state !== 'failed';
+    setSubmitButtonState_(state);
+    applyFormLocks_();
+  }
+
+  /** The way back to a blank run: the freeze lifts and the button forgets the last one. */
+  function unlockRun_() {
+    runLocked = false;
+    setSubmitButtonState_('idle');
+    setSubmitStatus('', null);
+    applyFormLocks_();
   }
 
   /**
@@ -1755,7 +1801,7 @@ const SynapseScoresheet = (() => {
       : null;
     judgeCount = Array.isArray(data.judges) ? data.judges.length : 0;
     renderTeamOptions_();
-    applyJudgeGate_();
+    applyFormLocks_();
   }
 
   /**
@@ -1834,32 +1880,47 @@ const SynapseScoresheet = (() => {
   // Everything a run is entered into. The Judge select and Reload Config are deliberately
   // outside it - one is how you get past the gate - and so is History, which is a record of
   // runs already made rather than part of making one.
-  const RUN_SECTIONS = '.run-entry-panel, .table-wrap, .score-action-bar, .submit-section';
+  const JUDGE_GATE_SECTIONS = '.run-entry-panel, .table-wrap, .score-action-bar, .submit-section';
+  // What a sent run freezes: everything the run consisted of. Team is pointedly not here -
+  // picking another one is the way out - and neither is Submit, which reports the outcome.
+  const RUN_LOCK_SECTIONS =
+    '.entry-row-time, .entry-row-try, .table-wrap, .score-action-bar, .photo-preview-container';
 
   /**
-   * Locks the run form until a judge is picked, and only where there is a pick to make.
+   * Both locks on the run form, applied together.
    *
-   * One judge is filled in automatically by applyMetadata, so there is nothing to wait for
-   * and nothing is locked. Several judges means the teams below belong to whichever one is
-   * chosen: entering a score first is entering it against a list that is still empty.
+   * The judge gate holds until a judge is picked, and only where there is a pick to make:
+   * one judge is filled in automatically by applyMetadata, and the teams below belong to
+   * whichever judge is chosen, so scoring before that is scoring against an empty list.
+   * The run lock holds from Submit until another team is picked.
    *
-   * Done with a class and `inert` rather than `disabled` on each control. The submit flow
-   * already owns `disabled` on the Submit button and the photo control, and two owners of
-   * one property is how a button ends up stuck off after an error.
+   * Classes and `inert` rather than `disabled` on each control. The submit flow already
+   * owns `disabled` on the Submit button, and two owners of one property is how a button
+   * ends up stuck off after an error.
    */
-  function applyJudgeGate_() {
-    const locked = judgeCount > 1 && !getSelectedJudge();
+  function applyFormLocks_() {
+    const judgeLocked = judgeCount > 1 && !getSelectedJudge();
 
-    document.querySelectorAll(RUN_SECTIONS).forEach((section) => {
-      section.classList.toggle('is-judge-locked', locked);
+    setSectionLock_(JUDGE_GATE_SECTIONS, 'is-judge-locked', judgeLocked);
+    setSectionLock_(RUN_LOCK_SECTIONS, 'is-run-locked', runLocked);
+
+    // The two selectors overlap on the score tables and the photo bar, and `inert` is one
+    // attribute. Read back off the classes so it answers to both locks rather than to
+    // whichever of them was applied second.
+    document.querySelectorAll(JUDGE_GATE_SECTIONS + ', ' + RUN_LOCK_SECTIONS).forEach((el) => {
+      const off = el.classList.contains('is-judge-locked') || el.classList.contains('is-run-locked');
       // pointer-events in the stylesheet stops taps; this is what stops the keyboard and
       // takes the locked controls out of the accessibility tree with them.
-      if (locked) section.setAttribute('inert', '');
-      else section.removeAttribute('inert');
+      if (off) el.setAttribute('inert', '');
+      else el.removeAttribute('inert');
     });
 
     const hint = document.getElementById('judge-gate-hint');
-    if (hint) hint.hidden = !locked;
+    if (hint) hint.hidden = !judgeLocked;
+  }
+
+  function setSectionLock_(selector, className, on) {
+    document.querySelectorAll(selector).forEach((el) => el.classList.toggle(className, on));
   }
 
   function validateSubmission(now) {
@@ -1950,14 +2011,18 @@ const SynapseScoresheet = (() => {
     const totalScore = getTotalScore();
     if (totalScore === 0 && !window.confirm('Total score is 0. Submit anyway?')) return;
 
+    // Set before the photo wait below, not after it. That wait used to be covered by the
+    // modal; the button is what covers it now, so it has to be yellow before it starts.
+    runLocked = true;
+    setSubmitButtonState_('sending');
+    applyFormLocks_();
+    setSubmitStatus('', null);
+
     // Usually finished long ago, while the judge was still scoring; this waits out only
-    // whatever is left of it. The spinner goes up first so the pause is never silent.
+    // whatever is left of it.
     const photoWaitAt = Date.now();
     const hadPhotoUpload = !!currentPhotoUpload;
-    if (currentPhotoUpload) {
-      setSubmitLoadingState(true);
-      await currentPhotoUpload;
-    }
+    if (currentPhotoUpload) await currentPhotoUpload;
     // Nearly always nothing. A number here means the judge finished scoring before Drive
     // finished storing, which is the one case the pre-upload cannot help with. Left off the
     // record entirely for a run with no photo, where a zero would say nothing.
@@ -1993,6 +2058,7 @@ const SynapseScoresheet = (() => {
           : 'History could not be saved on this device.',
         savedLocally ? 'ok' : 'warn'
       );
+      finishSubmit_(savedLocally ? 'done' : 'failed');
       return;
     }
 
@@ -2002,11 +2068,6 @@ const SynapseScoresheet = (() => {
     // sees the run land the moment they submit, and a tab that dies mid-request still
     // leaves the record behind - which is the whole reason the list exists.
     const historySaved = saveSubmissionHistoryEntry_(historyEntry, 'sending', null);
-
-    btn.disabled = true;
-    btn.textContent = 'Sending…';
-    setSubmitStatus('', null);
-    setSubmitLoadingState(true);
 
     const sentAt = Date.now();
 
@@ -2033,6 +2094,8 @@ const SynapseScoresheet = (() => {
         );
       }
 
+      finishSubmit_('done');
+
     } catch (err) {
       const pending = pendingCount();
       if (pending > pendingBefore) {
@@ -2044,17 +2107,16 @@ const SynapseScoresheet = (() => {
             + elapsedNote_(sentAt),
           'warn'
         );
+        finishSubmit_('queued');
       } else {
         updateSubmissionHistoryEntry_(historyEntry.id, 'failed', null,
           Object.assign({ submitMs: Date.now() - sentAt }, photoWait));
+        finishSubmit_('failed');
         setSubmitStatus('Submit failed: ' + err.message + elapsedNote_(sentAt), 'error');
         showError_('Submitting a run', err);
       }
 
     } finally {
-      setSubmitLoadingState(false);
-      btn.disabled = false;
-      btn.textContent = 'Submit';
       // The team just scored now carries the marker, whichever way the run ended up.
       renderTeamOptions_();
     }
@@ -2205,7 +2267,9 @@ const SynapseScoresheet = (() => {
 
         // A different judge scores different teams, so the list below has to follow.
         renderTeamOptions_();
-        applyJudgeGate_();
+        // And that list lands on a different team, so a run frozen here belongs to the
+        // judge who just left. Re-applies both locks on its way out.
+        unlockRun_();
       });
     }
 
@@ -2227,7 +2291,12 @@ const SynapseScoresheet = (() => {
 
         restoredTeam = nextTeam;
 
-        if (selectedNewTeam) resetRunState();
+        // Another team is another run. Whatever the last one ended as, this one starts on
+        // a blank sheet - which is also the way out of the freeze a sent run leaves.
+        if (selectedNewTeam) {
+          resetRunState();
+          unlockRun_();
+        }
         saveDraft();
       });
     }
