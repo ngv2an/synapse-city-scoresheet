@@ -270,6 +270,13 @@ function doGet(e) {
   const startTime = Date.now();
   let sheetId = '';
 
+  // Rebuilding the standings is a write, so it is its own action rather than something
+  // every Config load quietly does. Anyone with the link can fire it when they want to
+  // look, which is what a timed trigger grinding away all day was standing in for.
+  if (e && e.parameter && e.parameter.action === 'ranking') {
+    return handleRankingRequest_(e.parameter, startTime);
+  }
+
   try {
     sheetId = resolveSheetId_(e && e.parameter ? (e.parameter.sheetId || e.parameter.link) : '');
     const ss = SpreadsheetApp.openById(sheetId);
@@ -1237,6 +1244,55 @@ function threshold_(range, atLeast, style) {
     .setFontColor(style.color)
     .setRanges([range])
     .build();
+}
+
+/**
+ * Rebuilds one level's Ranking tab on request and answers with a page a person can read,
+ * because the thing clicking this is a browser tab, not the scoresheet.
+ *
+ * Behind the shared key: doGet is otherwise read-only, and this one writes.
+ */
+function handleRankingRequest_(params, startTime) {
+  const sheetId = resolveSheetId_(params.sheetId || params.link);
+
+  try {
+    if (params.key !== SHARED_KEY) throw new Error('Wrong or missing key.');
+
+    const sheet = buildRankingSheet(sheetId);
+    const seconds = secondsSince_(startTime);
+
+    logActivity_({
+      action: 'Ranking',
+      sheetId: sheetId,
+      total: seconds,
+      status: 'OK'
+    });
+
+    return rankingPage_('Rebuilt "' + sheet.getName() + '" in ' + seconds + ' s.', true);
+
+  } catch (err) {
+    logActivity_({
+      action: 'Ranking',
+      sheetId: sheetId,
+      total: secondsSince_(startTime),
+      status: 'ERROR',
+      error: String(err)
+    });
+
+    return rankingPage_(String(err), false);
+  }
+}
+
+function rankingPage_(message, ok) {
+  const colour = ok ? '#15803d' : '#b91c1c';
+
+  return HtmlService.createHtmlOutput(
+    '<div style="font:16px/1.5 system-ui,sans-serif;padding:24px;color:' + colour + '">'
+    + '<strong>' + (ok ? 'Ranking updated' : 'Ranking failed') + '</strong>'
+    + '<p style="color:#334155">' + message.replace(/[<>&]/g, ' ') + '</p>'
+    + '<p style="color:#64748b;font-size:14px">Close this tab and go back to the Sheet.</p>'
+    + '</div>'
+  );
 }
 
 /**
