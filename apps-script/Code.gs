@@ -82,6 +82,10 @@ const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
 const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
 const RANKING_TOP_COUNT = 5;
 const RANKING_TOP_BACKGROUND = '#e6f4ea';
+// Base Top Score: the mean of those top five, in the header cell above the column they are
+// in - C2 for Round 1, I2 for Round 2.
+const RANKING_BASE_NOTE = 'Base Top Score: the average of the top '
+  + RANKING_TOP_COUNT + ' Raw Scores in this round.';
 
 /**
  * Two questions were being asked of Sheets on every single submit, inside the lock, and
@@ -1375,7 +1379,7 @@ function buildRankingSheet(sheetId) {
   writeRankingLink_(sheet, ss.getId());
   writeRankingHeaders_(sheet);
   writeRankingRows_(sheet, teams, runs);
-  highlightTopScores_(sheet);
+  applyTopScores_(sheet);
   return sheet;
 }
 
@@ -1389,18 +1393,20 @@ function columnLetter_(column) {
 }
 
 /**
- * Light green behind the top five Raw Scores, each round ranked on its own.
+ * The top five Raw Scores of each round: light green behind them, and their mean written
+ * into the header cell above them as the Base Top Score.
  *
- * A conditional format rather than a background painted during the rebuild: between two
- * rebuilds the numbers here get edited by hand, and a painted cell would stay green over a
- * score that had since fallen out of the top five.
+ * Both are formulas rather than values written during a rebuild. Between two rebuilds the
+ * numbers here get edited by hand, and a painted cell - or a stored average - would still
+ * be describing the run that used to be there.
  *
- * Rank comes from counting the scores that beat this one, not from LARGE, which returns an
- * error in a round holding fewer than five runs - the state every round is in before it
- * starts. Ties are all kept: five teams level at the top are five teams in the top five,
- * and there is no honest way to pick which of them loses the colour.
+ * Rank comes from counting the scores that beat this one, not from LARGE alone, which is an
+ * error in a round holding fewer than five runs: the state every round is in before it
+ * starts. Ties are all kept in both places. Five teams level at the top are five teams in
+ * the top five, there is no honest way to pick which of them loses the colour, and the
+ * average is over whatever the colour covers.
  */
-function highlightTopScores_(sheet) {
+function applyTopScores_(sheet) {
   // G1 is empty on every Ranking tab - row 1 holds only the link - and column 7 is inside
   // the width writeRankingHeaders_ has just guaranteed.
   const sep = argumentSeparator_(sheet.getRange(RANKING_LINK_ROW, RANKING_SPACER_COLUMN));
@@ -1412,6 +1418,16 @@ function highlightTopScores_(sheet) {
     const at = columnLetter_(column);
     const cell = at + first;
     const down = '$' + at + '$' + first + ':$' + at;
+    const scores = at + first + ':' + at;
+
+    // MIN against COUNT is what keeps this alive early on: LARGE(range, 5) is an error
+    // until five scores exist, and a round with two runs has a top five of two. Averaging
+    // everything at or above that cut-off is also what makes ties agree with the colour.
+    sheet.getRange(RANKING_GROUP_ROW, column)
+      .setFormula('=IFERROR(AVERAGEIF(' + scores + sep + '">="&LARGE(' + scores + sep
+        + 'MIN(' + RANKING_TOP_COUNT + sep + 'COUNT(' + scores + '))))' + sep + '"")')
+      .setNumberFormat('0.00')
+      .setNote(RANKING_BASE_NOTE);
 
     return SpreadsheetApp.newConditionalFormatRule()
       // Anchored to the top-left of the range below, so 'C4' reads as "this row's score".
