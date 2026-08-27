@@ -77,6 +77,11 @@ const RANKING_FIRST_DATA_ROW = RANKING_HEADER_ROW + 1;
 const RANKING_ROUND1_COLUMN = 2;
 const RANKING_SPACER_COLUMN = RANKING_ROUND1_COLUMN + RANKING_ROUND_COLUMNS.length;
 const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
+// Raw Score is the one the app produces; Normalized Score next to it is left for whoever
+// defines it and is empty until they do, so the top five is read off Raw Score.
+const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
+const RANKING_TOP_COUNT = 5;
+const RANKING_TOP_BACKGROUND = '#e6f4ea';
 
 /**
  * Two questions were being asked of Sheets on every single submit, inside the lock, and
@@ -1147,9 +1152,7 @@ function logActivity_(entry) {
  * formula whose answer is known and read it back. A ';' file makes the probe either a
  * parse error or SUM(1.1), and neither of those is 2, so both land on the right answer.
  */
-function argumentSeparator_(sheet) {
-  const probe = sheet.getRange(1, 26);  // Z1: clear of the layout written below
-
+function argumentSeparator_(probe) {
   probe.setFormula('=SUM(1,1)');
   SpreadsheetApp.flush();
   const separator = probe.getValue() === 2 ? ',' : ';';
@@ -1175,7 +1178,7 @@ function argumentSeparator_(sheet) {
  * down there to be looked at.
  */
 function buildLogDashboard_(sheet) {
-  const sep = argumentSeparator_(sheet);
+  const sep = argumentSeparator_(sheet.getRange(1, 26));  // Z1: clear of the layout below
   const first = LOG_FIRST_DATA_ROW;
   const col = (letter) => letter + first + ':' + letter;
 
@@ -1372,7 +1375,54 @@ function buildRankingSheet(sheetId) {
   writeRankingLink_(sheet, ss.getId());
   writeRankingHeaders_(sheet);
   writeRankingRows_(sheet, teams, runs);
+  highlightTopScores_(sheet);
   return sheet;
+}
+
+/** Column number to letter: a custom formula is handed to Sheets as text, not as a Range. */
+function columnLetter_(column) {
+  let letter = '';
+  for (let n = column; n > 0; n = Math.floor((n - 1) / 26)) {
+    letter = String.fromCharCode(65 + (n - 1) % 26) + letter;
+  }
+  return letter;
+}
+
+/**
+ * Light green behind the top five Raw Scores, each round ranked on its own.
+ *
+ * A conditional format rather than a background painted during the rebuild: between two
+ * rebuilds the numbers here get edited by hand, and a painted cell would stay green over a
+ * score that had since fallen out of the top five.
+ *
+ * Rank comes from counting the scores that beat this one, not from LARGE, which returns an
+ * error in a round holding fewer than five runs - the state every round is in before it
+ * starts. Ties are all kept: five teams level at the top are five teams in the top five,
+ * and there is no honest way to pick which of them loses the colour.
+ */
+function highlightTopScores_(sheet) {
+  // G1 is empty on every Ranking tab - row 1 holds only the link - and column 7 is inside
+  // the width writeRankingHeaders_ has just guaranteed.
+  const sep = argumentSeparator_(sheet.getRange(RANKING_LINK_ROW, RANKING_SPACER_COLUMN));
+  const first = RANKING_FIRST_DATA_ROW;
+  const height = Math.max(sheet.getMaxRows() - first + 1, 1);
+
+  const rules = [RANKING_ROUND1_COLUMN, RANKING_ROUND2_COLUMN].map(function (round) {
+    const column = round + RANKING_SCORE_OFFSET;
+    const at = columnLetter_(column);
+    const cell = at + first;
+    const down = '$' + at + '$' + first + ':$' + at;
+
+    return SpreadsheetApp.newConditionalFormatRule()
+      // Anchored to the top-left of the range below, so 'C4' reads as "this row's score".
+      .whenFormulaSatisfied('=AND(ISNUMBER(' + cell + ')' + sep + 'COUNTIF(' + down + sep
+        + '">"&' + cell + ')<' + RANKING_TOP_COUNT + ')')
+      .setBackground(RANKING_TOP_BACKGROUND)
+      .setRanges([sheet.getRange(first, column, height, 1)])
+      .build();
+  });
+
+  sheet.setConditionalFormatRules(rules);
 }
 
 /**
