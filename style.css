@@ -998,6 +998,13 @@ body {
   background: #fee2e2;
 }
 
+/* Config load: filed with the runs but not one of them. */
+.history-entry.is-config {
+  background: #f8fafc;
+}
+
+.history-status.is-config { color: #64748b; }
+
 body.history-modal-open,
 body.timetable-modal-open,
 body.error-modal-open {

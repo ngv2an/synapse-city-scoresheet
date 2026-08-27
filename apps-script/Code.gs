@@ -363,7 +363,14 @@ function readConfig_(ss) {
   // A file with no Config tab has no level to preserve, so it is seeded as Explorer.
   const sheet = ss.getSheetByName(SHEET_NAME_CONFIG) || createConfigSheet_(ss, '');
   const data = sheet.getDataRange().getValues();
-  const tz = ss.getSpreadsheetTimeZone();
+  // Asked for only when a cell turns out to be a real Date. A tab written by
+  // createConfigSheet_ is plain text throughout, so on those files this round trip is
+  // never made at all.
+  let zone = '';
+  const tz = function () {
+    if (!zone) zone = ss.getSpreadsheetTimeZone();
+    return zone;
+  };
 
   const config = {
     competition: 'Synapse City',
@@ -511,7 +518,9 @@ function formatConfigValue_(cell, field, tz) {
 
   if (Object.prototype.toString.call(cell) === '[object Date]') {
     const pattern = field === 'competitionDate' ? 'dd/MM/yyyy' : 'HH:mm:ss';
-    return Utilities.formatDate(cell, tz, pattern);
+    // tz is a function, not a string: the file's zone is only worth a round trip once a
+    // Date has actually turned up, and most tabs never produce one.
+    return Utilities.formatDate(cell, tz(), pattern);
   }
   return String(cell).trim();
 }

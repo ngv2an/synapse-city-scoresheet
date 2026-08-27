@@ -85,6 +85,7 @@ const SynapseScoresheet = (() => {
   // A status not listed here was sent and acknowledged, which needs no label of its own.
   const HISTORY_STATUS_LABELS = {
     sending: 'Sending',
+    config: 'Config loaded',
     queued: 'Saved offline',
     failed: 'Not sent - still on this device',
     demo: 'Demo run - nothing was sent'
@@ -92,6 +93,7 @@ const SynapseScoresheet = (() => {
 
   const HISTORY_STATUS_CLASSES = {
     sending: ' is-sending',
+    config: ' is-config',
     queued: ' is-queued',
     failed: ' is-failed',
     demo: ' is-demo'
@@ -101,6 +103,7 @@ const SynapseScoresheet = (() => {
   // is drawn by CSS as a turning ring, so it is the one state with no character of its own.
   const HISTORY_STATUS_ICONS = {
     sending: ['', 'Sending'],
+    config: ['⚙', 'Config load'],
     queued: ['⧗', 'Saved offline'],
     failed: ['✕', 'Not sent'],
     demo: ['•', 'Demo run']
@@ -640,6 +643,40 @@ const SynapseScoresheet = (() => {
     };
   }
 
+  /**
+   * A Config load, filed alongside the runs.
+   *
+   * Not a run, but the same question is asked of both: how long did this device wait, and
+   * when did it last talk to the Sheet. The second half answers "did you press Reload?"
+   * without anyone having to remember.
+   */
+  function saveConfigHistoryEntry_(durationMs, data, err) {
+    const banner = document.getElementById('competition-banner');
+
+    const entry = {
+      version: 1,
+      kind: 'config',
+      id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9),
+      submittedAt: Date.now(),
+      status: err ? 'failed' : 'config',
+      competition: data && data.competition ? data.competition : (banner ? banner.textContent.trim() : ''),
+      competitionDate: data && data.competitionDate ? data.competitionDate : '',
+      level: data && data.level ? data.level : '',
+      judgeCount: data && Array.isArray(data.judges) ? data.judges.length : 0,
+      teamCount: data && Array.isArray(data.teams) ? data.teams.length : 0,
+      grouped: !!(data && data.teamsByJudge),
+      error: err ? errorMessageOf_(err) : '',
+      timing: { configMs: durationMs }
+    };
+
+    const entries = readSubmissionHistory_();
+    entries.unshift(entry);
+
+    const saved = writeSubmissionHistory_(entries);
+    renderSubmissionHistory_();
+    return saved;
+  }
+
   function saveSubmissionHistoryEntry_(entry, status, result) {
     const savedEntry = Object.assign({}, entry, {
       status: status,
@@ -711,15 +748,16 @@ const SynapseScoresheet = (() => {
       const statusClass = HISTORY_STATUS_CLASSES[entry.status] || '';
       const round = entry.round === '' || entry.round === undefined ? '-' : entry.round;
       const total = Number.isFinite(Number(entry.totalScore)) ? Number(entry.totalScore) : 0;
-      const label = 'View ' + String(entry.team || 'submission') + ' details';
+      const what = entry.kind === 'config' ? 'Config load' : (entry.team || 'submission');
+      const label = 'View ' + String(what) + ' details';
 
       return '<tr class="history-entry' + statusClass + '" data-history-id="'
         + escapeHtml(entry.id || '') + '" tabindex="0" role="button" aria-label="'
         + escapeHtml(label) + '">'
         + '<td>' + escapeHtml(formatHistoryClock_(entry.submittedAt)) + '</td>'
-        + '<td>' + escapeHtml(round) + '</td>'
-        + '<td>' + escapeHtml(entry.team || '-') + '</td>'
-        + '<td>' + escapeHtml(total) + '</td>'
+        + '<td>' + escapeHtml(entry.kind === 'config' ? '-' : round) + '</td>'
+        + '<td>' + escapeHtml(entry.kind === 'config' ? 'Config load' : (entry.team || '-')) + '</td>'
+        + '<td>' + escapeHtml(entry.kind === 'config' ? '-' : total) + '</td>'
         + '<td><span class="history-status is-' + status + '" role="img" aria-label="'
         + escapeHtml(icon[1]) + '" title="' + escapeHtml(icon[1]) + '">' + icon[0]
         + '</span></td>'
@@ -745,7 +783,33 @@ const SynapseScoresheet = (() => {
     return photoUrl ? 'Included in Sheet submission' : 'In Sheet only';
   }
 
+  /** A Config load has no mission table and no score, so it gets its own short panel. */
+  function buildConfigDetails_(entry) {
+    const timing = entry.timing && typeof entry.timing === 'object' ? entry.timing : {};
+    const fields = [
+      ['Loaded', formatHistoryTimestamp_(entry.submittedAt)],
+      ['Status', entry.error ? 'Failed' : 'Config loaded'],
+      ['Load Time', formatDuration_(timing.configMs)],
+      ['Competition', entry.competition || '-'],
+      ['Competition Date', entry.competitionDate || '-'],
+      ['Level', entry.level || '-'],
+      ['Judges', entry.judgeCount || 0],
+      ['Team IDs', entry.teamCount || 0],
+      // Whether Config groups teams under judges, which is what the scoresheet filters by.
+      ['Grouped By Judge', entry.grouped ? 'Yes' : 'No']
+    ];
+
+    if (entry.error) fields.push(['Error', entry.error]);
+
+    return '<div class="history-detail-grid">' + fields.map((field) => (
+      '<div class="history-detail-field"><span>' + escapeHtml(field[0]) + '</span><strong>'
+      + escapeHtml(field[1]) + '</strong></div>'
+    )).join('') + '</div>';
+  }
+
   function buildHistoryDetails_(entry) {
+    if (entry.kind === 'config') return buildConfigDetails_(entry);
+
     const level = String(entry.level || '').toLowerCase();
     const blockIds = LEVELS[level] || ALL_BLOCKS.map((block) => block.id);
     const botIds = LEANBOT_LEVELS[level] || [];
@@ -1354,15 +1418,21 @@ const SynapseScoresheet = (() => {
       }
     }
 
+    // Measured around the request alone, so it lines up with the server's own Config total
+    // in the Logs tab and the gap between them means the same thing it does for a submit.
+    const startedAt = Date.now();
+
     try {
       const data = await SheetSubmit.fetchMetadata(sheetId);
       if (!data || !data.ok) throw new Error(data && data.error ? data.error : 'Invalid Config response');
 
       writeCachedConfig_(data);
       applyMetadata(data);
+      saveConfigHistoryEntry_(Date.now() - startedAt, data, null);
       setConfigLoadingState('', null);
       return true;
     } catch (err) {
+      saveConfigHistoryEntry_(Date.now() - startedAt, null, err);
       showError_('Loading Config', err);
       // A failed reload leaves the Config already on screen alone. Only a cold start with
       // nothing to show has to stay behind the loading card.
