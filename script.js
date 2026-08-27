@@ -2078,21 +2078,16 @@ const SynapseScoresheet = (() => {
       updateSubmissionHistoryEntry_(historyEntry.id, 'submitted', result,
         Object.assign({ submitMs: Date.now() - sentAt }, photoWait));
 
-      if (result.duplicate && !result.viaRetry) {
-        const historyWarning = historySaved ? '' : ' History could not be saved on this device.';
-        setSubmitStatus(
-          'This run was already recorded.' + historyWarning + elapsedNote_(sentAt),
-          historySaved ? 'ok' : 'warn'
-        );
-      } else {
-        const where = result.row ? ' - row ' + result.row : '';
-        const historyWarning = historySaved ? '' : ' History could not be saved on this device.';
-        setSubmitStatus(
-          'Submitted "' + validation.team + '"' + where + '.' + historyWarning
-            + elapsedNote_(sentAt),
-          historySaved ? 'ok' : 'warn'
-        );
-      }
+      // Nothing to announce on the way out. The button has gone green, and the row number,
+      // the timings, and whether the server saw this as a repeat are all on the History
+      // entry written a moment ago - a line of text under the button only said it twice.
+      //
+      // Unless History is the thing that failed. That is the one case worth interrupting
+      // for, because it is what everything above now points at.
+      setSubmitStatus(
+        historySaved ? '' : 'Sent, but History could not be saved on this device.',
+        historySaved ? null : 'warn'
+      );
 
       finishSubmit_('done');
 
