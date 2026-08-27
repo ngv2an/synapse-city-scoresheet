@@ -65,7 +65,9 @@ const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
  * notice they are stale. Putting the rebuild where they are already looking beats asking
  * them to find the script editor.
  *
- * Normalized Score sits third in each block and is the one column a rebuild never writes.
+ * Every column of the block is written by a rebuild now, Normalized Score included. It was
+ * left alone for as long as nothing here defined what normalising meant; Base Top Score
+ * defines it, so the column stopped being somebody else's.
  */
 const RANKING_SHEET_PREFIX = 'Ranking - ';
 const RANKING_ROUND_COLUMNS = ['Submission', 'Raw Score', 'Normalized Score', 'Time', 'Try'];
@@ -80,6 +82,9 @@ const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
 // Raw Score is the one the app produces; Normalized Score next to it is left for whoever
 // defines it and is empty until they do, so the top five is read off Raw Score.
 const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
+// Raw Score over the Base Top Score above it: 1.000 is a run level with the average of the
+// round's top five, and everything else reads against that.
+const RANKING_NORMALIZED_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Normalized Score');
 const RANKING_TOP_COUNT = 5;
 const RANKING_TOP_BACKGROUND = '#e6f4ea';
 // Base Top Score: the mean of those top five, in the header cell above the column they are
@@ -1357,9 +1362,8 @@ function rankingPage_(message, ok) {
  * Run it from the editor when you want the standings, or point a time-driven trigger at
  * buildRankingSheets().
  *
- * Normalized Score is left untouched, both columns of it. Nothing in this project defines
- * how a score is normalised, so that column belongs to whoever decides - and a rebuild
- * that wiped their formula would be worse than no rebuild at all.
+ * Normalized Score is written as a formula against the Base Top Score in the header, so it
+ * follows a hand-edited Raw Score without waiting for the next rebuild.
  */
 function buildRankingSheet(sheetId) {
   const ss = SpreadsheetApp.openById(resolveSheetId_(sheetId || DEFAULT_SHEET_ID));
@@ -1378,8 +1382,14 @@ function buildRankingSheet(sheetId) {
   ensureRankingLinkRow_(sheet);
   writeRankingLink_(sheet, ss.getId());
   writeRankingHeaders_(sheet);
-  writeRankingRows_(sheet, teams, runs);
-  applyTopScores_(sheet);
+
+  // Probed once here rather than inside each writer. It costs a write and a flush, and both
+  // of them need it; the headers have to be down first, because the probe cell sits inside
+  // the width they guarantee.
+  const sep = argumentSeparator_(sheet.getRange(RANKING_LINK_ROW, RANKING_SPACER_COLUMN));
+
+  writeRankingRows_(sheet, teams, runs, sep);
+  applyTopScores_(sheet, sep);
   return sheet;
 }
 
@@ -1406,10 +1416,7 @@ function columnLetter_(column) {
  * the top five, there is no honest way to pick which of them loses the colour, and the
  * average is over whatever the colour covers.
  */
-function applyTopScores_(sheet) {
-  // G1 is empty on every Ranking tab - row 1 holds only the link - and column 7 is inside
-  // the width writeRankingHeaders_ has just guaranteed.
-  const sep = argumentSeparator_(sheet.getRange(RANKING_LINK_ROW, RANKING_SPACER_COLUMN));
+function applyTopScores_(sheet, sep) {
   const first = RANKING_FIRST_DATA_ROW;
   const height = Math.max(sheet.getMaxRows() - first + 1, 1);
 
@@ -1554,20 +1561,20 @@ function writeRankingHeaders_(sheet) {
   sheet.setColumnWidth(RANKING_SPACER_COLUMN, 24);
 }
 
-function writeRankingRows_(sheet, teams, runs) {
+function writeRankingRows_(sheet, teams, runs, sep) {
   const height = Math.max(sheet.getLastRow() - RANKING_HEADER_ROW, teams.length, 0);
   const needed = RANKING_HEADER_ROW + height;
   if (height > 0 && sheet.getMaxRows() < needed) {
     sheet.insertRowsAfter(sheet.getMaxRows(), needed - sheet.getMaxRows());
   }
 
-  // Cleared column by column rather than as one block, so the two Normalized Score columns
-  // sitting in the middle of each round keep whatever is in them.
+  // One block per round, all five columns of it. This used to skip Normalized Score, back
+  // when that column held a formula nobody here had written; it holds one written below now.
   if (height > 0) {
     sheet.getRange(RANKING_FIRST_DATA_ROW, 1, height, 1).clearContent();
     [RANKING_ROUND1_COLUMN, RANKING_ROUND2_COLUMN].forEach(function (column) {
-      sheet.getRange(RANKING_FIRST_DATA_ROW, column, height, 2).clearContent();
-      sheet.getRange(RANKING_FIRST_DATA_ROW, column + 3, height, 2).clearContent();
+      sheet.getRange(RANKING_FIRST_DATA_ROW, column, height, RANKING_ROUND_COLUMNS.length)
+        .clearContent();
     });
   }
 
@@ -1586,7 +1593,38 @@ function writeRankingRows_(sheet, teams, runs) {
       .setValues(cells.map(function (c) { return [c[0], c[1]]; }));
     sheet.getRange(RANKING_FIRST_DATA_ROW, round[1] + 3, teams.length, 2)
       .setValues(cells.map(function (c) { return [c[2], c[3]]; }));
+
+    writeNormalizedColumn_(sheet, round[1], teams.length, sep);
   });
+}
+
+/**
+ * Normalized Score, one formula per team row: this team's Raw Score over the Base Top Score
+ * sitting in the header of the same column block.
+ *
+ * A formula and not a number, because Raw Score gets corrected by hand between rebuilds and
+ * a stored ratio would go on describing the score it replaced. It also means the whole
+ * column moves the moment the Base Top Score above it does.
+ *
+ * The empty test comes first and the divide-by-zero guard second, because they mean
+ * different things: a team with no run has no ratio, and a round whose top five is still
+ * empty has no scale to measure against. Both read as blank, neither as zero.
+ */
+function writeNormalizedColumn_(sheet, roundColumn, rows, sep) {
+  const raw = columnLetter_(roundColumn + RANKING_SCORE_OFFSET);
+  const base = '$' + raw + '$' + RANKING_GROUP_ROW;
+  const column = roundColumn + RANKING_NORMALIZED_OFFSET;
+
+  const formulas = [];
+  for (let i = 0; i < rows; i++) {
+    const cell = raw + (RANKING_FIRST_DATA_ROW + i);
+    formulas.push(['=IF(' + cell + '=""' + sep + '""' + sep
+      + 'IFERROR(' + cell + '/' + base + sep + '""))']);
+  }
+
+  sheet.getRange(RANKING_FIRST_DATA_ROW, column, rows, 1)
+    .setFormulas(formulas)
+    .setNumberFormat('0.000');
 }
 
 /**
