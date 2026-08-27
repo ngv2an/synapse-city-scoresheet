@@ -57,9 +57,9 @@ const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C';
 const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
 
 /**
- * Ranking layout: Team ID, then five columns for Round 1, one blank column, then the same
- * five for Round 2. A link row on top, then two header rows, the upper one naming the two
- * blocks.
+ * Ranking layout: Team ID, then five columns for Round 1, one blank column, the same five
+ * for Round 2, and one column of Overall Result on the end. A link row on top, then two
+ * header rows, the upper one naming the three blocks.
  *
  * The link row exists because a rebuild is a manual act and the standings are where people
  * notice they are stale. Putting the rebuild where they are already looking beats asking
@@ -79,12 +79,18 @@ const RANKING_FIRST_DATA_ROW = RANKING_HEADER_ROW + 1;
 const RANKING_ROUND1_COLUMN = 2;
 const RANKING_SPACER_COLUMN = RANKING_ROUND1_COLUMN + RANKING_ROUND_COLUMNS.length;
 const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
-// Raw Score is the one the app produces; Normalized Score next to it is left for whoever
-// defines it and is empty until they do, so the top five is read off Raw Score.
+// The top five is read off Raw Score, the column the app actually produces. Normalized
+// Score beside it is derived from that same five, so ranking on it would be circular.
 const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
 // Raw Score over the Base Top Score above it: 1.000 is a run level with the average of the
 // round's top five, and everything else reads against that.
 const RANKING_NORMALIZED_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Normalized Score');
+// Column M, straight after Round 2 with no spacer: the better of a team's two normalized
+// runs. Two rounds measured against their own round's top five are on one scale by
+// construction, which is what makes taking the larger of them meaningful.
+const RANKING_OVERALL_COLUMN = RANKING_ROUND2_COLUMN + RANKING_ROUND_COLUMNS.length;
+const RANKING_OVERALL_GROUP = 'Overall Result';
+const RANKING_OVERALL_LABEL = 'Best Score';
 const RANKING_TOP_COUNT = 5;
 const RANKING_TOP_BACKGROUND = '#e6f4ea';
 // Base Top Score: the mean of those top five, in the header cell above the column they are
@@ -1539,7 +1545,7 @@ function writeRankingLink_(sheet, sheetId) {
 }
 
 function writeRankingHeaders_(sheet) {
-  const width = RANKING_ROUND2_COLUMN + RANKING_ROUND_COLUMNS.length - 1;
+  const width = RANKING_OVERALL_COLUMN;
   if (sheet.getMaxColumns() < width) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
   }
@@ -1547,6 +1553,7 @@ function writeRankingHeaders_(sheet) {
   const group = new Array(width).fill('');
   group[RANKING_ROUND1_COLUMN - 1] = 'Round 1';
   group[RANKING_ROUND2_COLUMN - 1] = 'Round 2';
+  group[RANKING_OVERALL_COLUMN - 1] = RANKING_OVERALL_GROUP;
 
   const labels = new Array(width).fill('');
   labels[0] = 'Team ID';
@@ -1554,11 +1561,13 @@ function writeRankingHeaders_(sheet) {
     labels[RANKING_ROUND1_COLUMN - 1 + i] = label;
     labels[RANKING_ROUND2_COLUMN - 1 + i] = label;
   });
+  labels[RANKING_OVERALL_COLUMN - 1] = RANKING_OVERALL_LABEL;
 
   sheet.getRange(RANKING_GROUP_ROW, 1, 2, width).setValues([group, labels]).setFontWeight('bold');
   sheet.setFrozenRows(RANKING_HEADER_ROW);
   sheet.setColumnWidth(1, 110);
   sheet.setColumnWidth(RANKING_SPACER_COLUMN, 24);
+  sheet.setColumnWidth(RANKING_OVERALL_COLUMN, 100);
 }
 
 function writeRankingRows_(sheet, teams, runs, sep) {
@@ -1572,6 +1581,7 @@ function writeRankingRows_(sheet, teams, runs, sep) {
   // when that column held a formula nobody here had written; it holds one written below now.
   if (height > 0) {
     sheet.getRange(RANKING_FIRST_DATA_ROW, 1, height, 1).clearContent();
+    sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_OVERALL_COLUMN, height, 1).clearContent();
     [RANKING_ROUND1_COLUMN, RANKING_ROUND2_COLUMN].forEach(function (column) {
       sheet.getRange(RANKING_FIRST_DATA_ROW, column, height, RANKING_ROUND_COLUMNS.length)
         .clearContent();
@@ -1596,6 +1606,34 @@ function writeRankingRows_(sheet, teams, runs, sep) {
 
     writeNormalizedColumn_(sheet, round[1], teams.length, sep);
   });
+
+  writeOverallColumn_(sheet, teams.length, sep);
+}
+
+/**
+ * Best Score: the better of a team's two Normalized Scores.
+ *
+ * Comparable across rounds because each side of it is already a ratio against its own
+ * round's top five, so a hard Round 2 does not quietly outrank an easy Round 1.
+ *
+ * COUNT is what tells "no runs at all" apart from "a run worth zero" - MAX over two empty
+ * cells is 0, and a team that never went out has no best score rather than the worst one.
+ * A team that ran only one round is compared on that one, which MAX gives for free.
+ */
+function writeOverallColumn_(sheet, rows, sep) {
+  const first = columnLetter_(RANKING_ROUND1_COLUMN + RANKING_NORMALIZED_OFFSET);
+  const second = columnLetter_(RANKING_ROUND2_COLUMN + RANKING_NORMALIZED_OFFSET);
+
+  const formulas = [];
+  for (let i = 0; i < rows; i++) {
+    const row = RANKING_FIRST_DATA_ROW + i;
+    const pair = first + row + sep + second + row;
+    formulas.push(['=IF(COUNT(' + pair + ')=0' + sep + '""' + sep + 'MAX(' + pair + '))']);
+  }
+
+  sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_OVERALL_COLUMN, rows, 1)
+    .setFormulas(formulas)
+    .setNumberFormat('0.000');
 }
 
 /**
