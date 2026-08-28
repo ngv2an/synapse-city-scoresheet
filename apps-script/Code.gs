@@ -74,8 +74,8 @@ const RANKING_SHEET_PREFIX = 'Ranking - ';
 const RANKING_ROUND_COLUMNS = ['Submission', 'Raw Score', 'Normalized Score', 'Time', 'Try'];
 const RANKING_LINK_ROW = 1;
 const RANKING_LINK_LABEL = 'Click here to update Ranking';
-// The label lives in the number format, not in the text, so the cell can hold a real Date.
-const RANKING_UPDATED_FORMAT = '"Last Updated at "hh:mm:ss dd/mm/yyyy';
+const RANKING_UPDATED_LABEL = 'Last Updated at ';
+const RANKING_UPDATED_FORMAT = 'HH:mm:ss dd/MM/yyyy';
 const RANKING_GROUP_ROW = RANKING_LINK_ROW + 1;
 const RANKING_HEADER_ROW = RANKING_GROUP_ROW + 1;
 const RANKING_FIRST_DATA_ROW = RANKING_HEADER_ROW + 1;
@@ -1412,15 +1412,29 @@ function buildRankingSheet(sheetId) {
 /**
  * When this tab was last rebuilt, on the link row beside the link.
  *
- * A Date with the wording folded into the number format rather than a preformatted string:
- * the cell keeps the real moment, and Sheets renders it in the file's own timezone instead
- * of the script's. NOW() would be wrong here for the opposite reason - it re-evaluates on
- * every open and would report a rebuild that never happened.
+ * Text, and deliberately not a Date carrying the wording in its number format. Sheets only
+ * spills TEXT into the empty cells beside it - a number or a date too wide for its column
+ * renders as ###### instead - and this stamp is about 220px against a 100px column. Writing
+ * it as a string is what buys it the same overflow the link gets out of A1.
+ *
+ * The cost is that the cell no longer holds a sortable moment, which nothing here wanted:
+ * this is a banner, not data. Formatting against the file's timezone rather than the
+ * script's keeps it honest, since the two need not agree.
+ *
+ * NOW() would be wrong for a different reason - it re-evaluates on every open and would
+ * report a rebuild that never happened.
  */
 function writeRankingStamp_(sheet) {
+  const when = Utilities.formatDate(
+    new Date(), sheet.getParent().getSpreadsheetTimeZone(), RANKING_UPDATED_FORMAT
+  );
+
+  // Plain-text format first, so a tab rebuilt by the previous version - which left a date
+  // format on this cell - does not try to read the string back as a date.
   sheet.getRange(RANKING_LINK_ROW, RANKING_UPDATED_COLUMN)
-    .setValue(new Date())
-    .setNumberFormat(RANKING_UPDATED_FORMAT)
+    .setNumberFormat('@')
+    .setValue(RANKING_UPDATED_LABEL + when)
+    .setHorizontalAlignment('left')
     .setFontColor('#5f6368')
     .setFontStyle('italic');
 }
