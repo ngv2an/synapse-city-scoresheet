@@ -126,11 +126,16 @@ const RANKING_TEST_TEAM = 'Test Submission';
 // The top five is read off Raw Score, the column the app actually produces. Normalized
 // Score beside it is derived from that same five, so ranking on it would be circular.
 const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
-// Raw Score over the Base Top Score above it, times this: 100 is a run level with the
-// average of the round's top five, and everything else reads against that. Two decimals
-// hold finer detail at this scale than three did at a scale of one.
-const RANKING_NORMALIZED_SCALE = 100;
-const RANKING_NORMALIZED_DIGITS = '0.00';
+// Rulebook 10.2: Normalized Score = (Raw Score / Base Top Score) x 1000. A run level with
+// the average of its round's top five reads 1000.0, and everything else reads against that.
+//
+// One decimal at this scale is what two were at a scale of 100, and the shown value is also
+// the compared one - see rankTeams_. Carrying more precision than the tab displays would
+// mean two teams reading 1000.0 taking different places for a difference nobody can see,
+// and it would keep the tiebreakers in 10.3 from ever being reached.
+const RANKING_NORMALIZED_SCALE = 1000;
+const RANKING_NORMALIZED_DIGITS = '0.0';
+const RANKING_TIE_DECIMALS = (RANKING_NORMALIZED_DIGITS.split('.')[1] || '').length;
 const RANKING_NORMALIZED_OFFSET = RANKING_ROUND_COLUMNS.indexOf(RANKING_NORMALIZED_LABEL);
 // Every column of the Overall Result block, addressed by the name it carries in the header
 // so the two can never drift apart. All six come off the pair of Normalized values, which
@@ -142,10 +147,7 @@ const RANKING_BEST_SCORE_COLUMN = overallColumn_('Best Score');
 const RANKING_VARIATION_COLUMN = overallColumn_('Variation');
 const RANKING_BEST_TIME_COLUMN = overallColumn_('Time');
 const RANKING_BEST_TRY_COLUMN = overallColumn_('Try');
-// Variation runs the opposite direction to every other number on this tab - low is steady -
-// so its header carries a note saying so.
-const RANKING_VARIATION_NOTE = 'Variation: the gap between the two Normalized values. '
-  + 'Lower is steadier. Blank until the team has run both rounds.';
+// Variation runs the opposite direction to every other number on this tab: low is steady.
 // Time and Try are copied off whichever round produced the Best Score, not off the better
 // time and the better try picked separately, which would describe a run nobody made.
 const RANKING_TIME_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Time');
@@ -1472,6 +1474,8 @@ function buildRankingSheet(sheetId) {
 
   writeRankingRows_(sheet, teams, tally.runs, sep);
   applyTopScores_(sheet, sep);
+  // After both, because it reads back what they worked out rather than working it out again.
+  writeRankColumn_(sheet, teams.length);
   writeInvalidNotice_(sheet, tally);
 
   // Last, so the stamp means "this tab was rebuilt" and not "a rebuild was attempted". A
@@ -1839,8 +1843,6 @@ function writeRankingHeaders_(sheet) {
   sheet.getRange(RANKING_GROUP_ROW, 1, 2, width)
     .setValues([group, rankingHeaderLabels_()])
     .setFontWeight('bold');
-  sheet.getRange(RANKING_HEADER_ROW, RANKING_VARIATION_COLUMN)
-    .setNote(RANKING_VARIATION_NOTE);
   // Through the header row, so the two preamble rows and both headings stay on screen while
   // the standings scroll. The blank row is inside that and is what separates the two.
   sheet.setFrozenRows(RANKING_HEADER_ROW);
@@ -1905,7 +1907,7 @@ function writeRankingRows_(sheet, teams, runs, sep) {
  * Best Score is the better of the two. Variation is how far apart they were - the same
  * pair, asked how steady rather than how high. Best Round names the round that won, and
  * Time and Try are lifted off it, so the block describes one actual run of one team. Rank
- * places that Best Score against every other team's.
+ * is not here - it needs all six of these settled first, and writeRankColumn_ has them.
  *
  * They are comparable across rounds because each side is already a ratio against its own
  * round's top five, so a hard Round 2 does not quietly outrank an easy Round 1, and a gap
@@ -1924,14 +1926,9 @@ function writeRankingRows_(sheet, teams, runs, sep) {
  * D>=J is TRUE for a team that has only run Round 2 and would report Round 1's empty Time.
  * N() reads "" as 0 and the comparison means what it looks like it means.
  *
- * Round 1 takes a tie, and all four columns that depend on the winner are built from one
+ * Round 1 takes a tie, and all three columns that depend on the winner are built from one
  * shared prefix so they cannot disagree about which round it was - a row naming Round 1
  * beside Round 2's time would be a run that never happened.
- *
- * Rank counts the Best Scores above this one rather than calling RANK(). An unplaced row
- * holds "", RANK over a range carrying text is an error, and COUNTIF with ">"&number passes
- * text by without comment. Teams level on Best Score share a placing and the next one is
- * skipped, which is how a placing has always worked.
  */
 function writeOverallColumns_(sheet, rows, sep) {
   const first = columnLetter_(RANKING_ROUND1_COLUMN + RANKING_NORMALIZED_OFFSET);
@@ -1940,10 +1937,6 @@ function writeOverallColumns_(sheet, rows, sep) {
   const time2 = columnLetter_(RANKING_ROUND2_COLUMN + RANKING_TIME_OFFSET);
   const try1 = columnLetter_(RANKING_ROUND1_COLUMN + RANKING_TRY_OFFSET);
   const try2 = columnLetter_(RANKING_ROUND2_COLUMN + RANKING_TRY_OFFSET);
-  const scoreAt = columnLetter_(RANKING_BEST_SCORE_COLUMN);
-  const allScores = '$' + scoreAt + '$' + RANKING_FIRST_DATA_ROW + ':$' + scoreAt;
-
-  const rank = [];
   const bestRound = [];
   const best = [];
   const gap = [];
@@ -1956,7 +1949,6 @@ function writeOverallColumns_(sheet, rows, sep) {
     const b = second + row;
     const pair = a + sep + b;
     const ran = 'COUNT(' + pair + ')';
-    const score = scoreAt + row;
 
     // Shared by every column that has to know which round won, so no edit can move one of
     // them without moving the rest.
@@ -1968,14 +1960,8 @@ function writeOverallColumns_(sheet, rows, sep) {
     bestRound.push([won + '1' + sep + '2))']);
     bestTime.push([won + time1 + row + sep + time2 + row + '))']);
     bestTry.push([won + try1 + row + sep + try2 + row + '))']);
-    rank.push(['=IF(' + score + '=""' + sep + '""' + sep
-      + 'COUNTIF(' + allScores + sep + '">"&' + score + ')+1)']);
   }
 
-  // Whole numbers, both of them: a placing and a round number.
-  sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_RANK_COLUMN, rows, 1)
-    .setFormulas(rank)
-    .setNumberFormat('0');
   sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_BEST_ROUND_COLUMN, rows, 1)
     .setFormulas(bestRound)
     .setNumberFormat('0');
@@ -1995,6 +1981,122 @@ function writeOverallColumns_(sheet, rows, sep) {
     .setFormulas(bestTime);
   sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_BEST_TRY_COLUMN, rows, 1)
     .setFormulas(bestTry);
+}
+
+/**
+ * Rank, worked out here and written as values.
+ *
+ * Rulebook 10.3 is four criteria deep, and a formula spelling all four out is one nobody
+ * could read, let alone check against the rulebook during an event. In script it is a
+ * comparison function that can be set beside 10.3 and matched line for line.
+ *
+ * The price is that Rank is a snapshot where the five columns beside it are live. Correct a
+ * Raw Score by hand and Best Score follows at once while Rank waits for the next rebuild.
+ * The link on row 2 is the fix.
+ *
+ * Read back rather than recomputed. Normalized, Best Score and Variation are already
+ * decided by formulas a few lines above, and working them out a second time in JavaScript
+ * would be two definitions of the same number waiting to disagree.
+ */
+function writeRankColumn_(sheet, rows) {
+  if (!rows) return;
+
+  // Those formulas were written by this same execution and have not been evaluated yet.
+  // Without this the read below comes back empty and every team ranks nowhere.
+  SpreadsheetApp.flush();
+
+  const values = sheet
+    .getRange(RANKING_FIRST_DATA_ROW, 1, rows, RANKING_LAST_COLUMN)
+    .getValues();
+
+  const try1 = RANKING_ROUND1_COLUMN + RANKING_TRY_OFFSET - 1;
+  const try2 = RANKING_ROUND2_COLUMN + RANKING_TRY_OFFSET - 1;
+
+  const entries = values.map(function (row) {
+    return {
+      best: rankingNumber_(row[RANKING_BEST_SCORE_COLUMN - 1], null),
+      // A team that ran one round has no gap to show and has not shown it is steady, so it
+      // loses this criterion rather than winning it with a gap of nothing. 10.3 assumes two
+      // rounds; this is the reading that does not reward the missing one.
+      variation: rankingNumber_(row[RANKING_VARIATION_COLUMN - 1], Infinity),
+      // Both rounds, per 10.3: "total Tries". Only Time is read off the best round alone.
+      tries: (Number(row[try1]) || 0) + (Number(row[try2]) || 0),
+      time: missionTimeMs_(row[RANKING_BEST_TIME_COLUMN - 1])
+    };
+  });
+
+  // A team with no score at all is not unranked-last, it is unranked. Sorting a copy keeps
+  // the column in Config order, which is the order the rows are in.
+  const placed = entries.filter(function (entry) { return entry.best !== null; });
+  placed.sort(rankingOrder_);
+
+  let place = 0;
+  placed.forEach(function (entry, i) {
+    // Alike on all four criteria means the same place, and the next one is skipped: 1, 2, 2, 4.
+    if (i === 0 || rankingOrder_(placed[i - 1], entry) !== 0) place = i + 1;
+    entry.place = place;
+  });
+
+  sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_RANK_COLUMN, rows, 1)
+    .setValues(entries.map(function (entry) { return [entry.place || '']; }))
+    .setNumberFormat('0');
+}
+
+/**
+ * Rulebook 10.3, in its own order:
+ *
+ *   1. Highest Normalized Score of the best round.
+ *   2. Consistency: smallest difference in Normalized Scores between the two rounds.
+ *   3. Efficiency: lowest number of total Tries.
+ *   4. Speed: fastest completion time.
+ *
+ * Negative when a places above b. Each line falls through to the next only on an exact tie,
+ * which is what "in case of a tie" asks for.
+ */
+function rankingOrder_(a, b) {
+  return compareRanked_(b.best, a.best)
+    || compareRanked_(a.variation, b.variation)
+    || compareRanked_(a.tries, b.tries)
+    || compareRanked_(a.time, b.time);
+}
+
+/**
+ * -1, 0 or 1.
+ *
+ * Not x - y: two absent values are both Infinity, Infinity - Infinity is NaN, and a sort
+ * fed NaN orders those rows however it likes and differently each run.
+ */
+function compareRanked_(x, y) {
+  if (x === y) return 0;
+  return x < y ? -1 : 1;
+}
+
+/**
+ * A cell that should hold a number, rounded to the precision the tab displays.
+ *
+ * Rounding is what makes a tie a tie. Two teams both showing 1000.0 must place level and go
+ * on to criterion 2; comparing the unrounded values would separate them by a millionth
+ * nobody can see and leave the rest of 10.3 unreachable.
+ */
+function rankingNumber_(value, absent) {
+  if (typeof value !== 'number' || !isFinite(value)) return absent;
+
+  const factor = Math.pow(10, RANKING_TIE_DECIMALS);
+  return Math.round(value * factor) / factor;
+}
+
+/**
+ * 'm:ss.ss' to milliseconds, and Infinity for anything unreadable - blank, an unfinished
+ * run, a cell someone typed into. Infinity sorts last under every comparison above, which
+ * is where a time nobody recorded belongs.
+ */
+function missionTimeMs_(value) {
+  const match = /^(\d{1,2}):(\d{2})(?:\.(\d{1,2}))?$/.exec(cellText_(value));
+  if (!match) return Infinity;
+
+  // '.5' is five tenths, so half a second - the reading the app applies on entry.
+  const hundredths = Number((match[3] || '0').padEnd(2, '0'));
+  return Number(match[1]) * 60000 + Number(match[2]) * 1000 + hundredths * 10;
 }
 
 /**
