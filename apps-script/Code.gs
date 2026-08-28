@@ -93,7 +93,10 @@ const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
 const RANKING_INVALID_COLUMN = RANKING_ROUND2_COLUMN;
 const RANKING_INVALID_NOTE = 'A submission is ranked only if it landed on the Competition '
   + 'Date, between Round 1 Time and End Time. Both ends count as inside. A bound left blank '
-  + 'in Config is not checked at all.';
+  + 'in Config is not checked at all. Test Submission answers to the date alone.';
+// Must match TEST_TEAM in script.js: it is what the app writes into the Team column, and
+// the two sides have to agree on the spelling for the exemption below to mean anything.
+const RANKING_TEST_TEAM = 'Test Submission';
 // The top five is read off Raw Score, the column the app actually produces. Normalized
 // Score beside it is derived from that same five, so ranking on it would be circular.
 const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
@@ -1582,7 +1585,7 @@ function readLatestRuns_(sheet, config, zone) {
     // schedule quietly stands down rather than voiding every row on the tab.
     if (stampAt !== -1) {
       tally.checked += 1;
-      if (!onSchedule_(when, schedule, zone)) {
+      if (!onSchedule_(when, team, schedule, zone)) {
         tally.invalid += 1;
         continue;
       }
@@ -1635,8 +1638,13 @@ function rankingSchedule_(config) {
  * The round it belongs to does not come into it: which round a run was is the judge's
  * declaration, not something to be inferred from the clock. Both ends of the window are
  * inside it, because being lenient at a boundary costs less than dropping a real score.
+ *
+ * A test run answers to the date and nothing else, matching what the app allows. It exists
+ * to prove the pipeline works, which is worth doing before Round 1 opens and after End Time
+ * has passed, and it is never ranked either way - ranking rows come from Config, and no
+ * Config lists a team by this name.
  */
-function onSchedule_(when, schedule, zone) {
+function onSchedule_(when, team, schedule, zone) {
   if (Object.prototype.toString.call(when) !== '[object Date]') return false;
 
   // A time-only cell in Sheets sits on 1899-12-30 and carries no date worth comparing.
@@ -1644,6 +1652,8 @@ function onSchedule_(when, schedule, zone) {
     && Utilities.formatDate(when, zone, 'yyyy-MM-dd') !== schedule.day) {
     return false;
   }
+
+  if (team === RANKING_TEST_TEAM) return true;
 
   // Read through the file's timezone, the same one the date was read through. getHours()
   // would answer in the script's zone, and the two need not be the same zone.

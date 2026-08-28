@@ -1984,7 +1984,7 @@ const SynapseScoresheet = (() => {
     let focusTarget = null;
     let round = '';
 
-    // Read before the schedule check: a test run is the one that may go before Round 1.
+    // Read before the schedule check: a test run is the one that may go outside the rounds.
     const team = getSelectedTeam();
     const isTestRun = team === TEST_TEAM;
 
@@ -1996,14 +1996,17 @@ const SynapseScoresheet = (() => {
       reasons.push(getCompetitionDateError());
     } else {
       const state = resolveRound(now);
-      if (state.ended) {
+      if (state.ended && !isTestRun) {
         reasons.push('End Time ' + competitionInfo.endTime + ' has passed.');
       } else if (state.current) {
         round = state.current.round;
       } else if (!isTestRun) {
         reasons.push('Round 1 has not started. Start time is ' + schedule.round1.time + '.');
       }
-      // A test run before Round 1 leaves Round blank - there is no round to name yet.
+      // A test run outside the rounds - before Round 1, or after End Time - leaves Round
+      // blank. There is no round to name, and a row with no round is one the ranking skips,
+      // so the pipeline stays testable at either end of the day without touching the
+      // standings. The date is still checked: a test is for today's event, not any day.
     }
 
     const judge = getSelectedJudge();
