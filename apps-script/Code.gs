@@ -114,6 +114,8 @@ const RANKING_ROUND1_COLUMN = RANKING_SPACER1_COLUMN + 1;
 const RANKING_SPACER2_COLUMN = RANKING_ROUND1_COLUMN + RANKING_ROUND_COLUMNS.length;
 const RANKING_ROUND2_COLUMN = RANKING_SPACER2_COLUMN + 1;
 const RANKING_LAST_COLUMN = RANKING_ROUND2_COLUMN + RANKING_ROUND_COLUMNS.length - 1;
+// The blank columns are a gap, not a column, so they are the one width nothing measures.
+const RANKING_SPACER_WIDTH = 24;
 // Right of the rebuild time, on the same row, far enough that neither clips the other.
 // Where Round 1 starts is geometry, not meaning.
 const RANKING_INVALID_COLUMN = RANKING_ROUND1_COLUMN;
@@ -1464,7 +1466,6 @@ function buildRankingSheet(sheetId) {
   const sheet = ss.getSheetByName(name) || ss.insertSheet(name);
 
   ensureRankingLayout_(sheet);
-  writeRankingLink_(sheet, ss.getId());
   writeRankingHeaders_(sheet);
 
   // Probed once here rather than inside each writer: it costs a write and a flush, and all
@@ -1476,6 +1477,13 @@ function buildRankingSheet(sheetId) {
   applyTopScores_(sheet, sep);
   // After both, because it reads back what they worked out rather than working it out again.
   writeRankColumn_(sheet, teams.length);
+
+  // The table is complete and rows 1 and 2 are still empty, which is the one moment the
+  // columns can be measured against the table alone.
+  autoSizeRankingColumns_(sheet);
+
+  // And now the two rows that were kept out of the way, free to spill as far as they need.
+  writeRankingLink_(sheet, ss.getId());
   writeInvalidNotice_(sheet, tally);
 
   // Last, so the stamp means "this tab was rebuilt" and not "a rebuild was attempted". A
@@ -1786,9 +1794,16 @@ function ensureRankingLayout_(sheet) {
   // outlives the marker above - one rebuild sets that, and from then on the check passes
   // and the stale notes are never reached - which is why this cannot sit behind it.
   //
-  // The three notes this version wants are written back a few lines below, so what a reader
-  // hovers over is always what this version had to say.
+  // The notes this version wants are written back a few lines below, so what a reader hovers
+  // over is always what this version had to say.
   sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).clearNote();
+
+  // The two preamble rows go back at the end of the rebuild, and they have to be gone while
+  // the columns are being sized. Each holds one long line meant to spill across the empty
+  // cells beside it; left in place, they would set the width of column A instead.
+  sheet.getRange(RANKING_UPDATED_ROW, 1,
+      RANKING_LINK_ROW - RANKING_UPDATED_ROW + 1, sheet.getMaxColumns())
+    .clearContent();
 }
 
 /**
@@ -1847,17 +1862,30 @@ function writeRankingHeaders_(sheet) {
   // the standings scroll. The blank row is inside that and is what separates the two.
   sheet.setFrozenRows(RANKING_HEADER_ROW);
 
-  // Set outright rather than left to default, both blocks of them: a column keeps its width
-  // through a clear(), so anything not named here goes on wearing the size some earlier
-  // layout gave it.
-  sheet.setColumnWidths(RANKING_ROUND1_COLUMN, RANKING_ROUND_COLUMNS.length, 100);
-  sheet.setColumnWidths(RANKING_ROUND2_COLUMN, RANKING_ROUND_COLUMNS.length, 100);
-  sheet.setColumnWidth(1, 110);
-  sheet.setColumnWidth(RANKING_SPACER1_COLUMN, 24);
-  sheet.setColumnWidth(RANKING_SPACER2_COLUMN, 24);
-  sheet.setColumnWidths(RANKING_OVERALL_COLUMN, RANKING_OVERALL_COLUMNS.length, 100);
-  // A placing is two digits at the most, and the column beside it is the one worth reading.
-  sheet.setColumnWidth(RANKING_RANK_COLUMN, 60);
+}
+
+/**
+ * Column widths, fitted to what is in them.
+ *
+ * Every width on the tab is set here and nowhere else. A column keeps its width through a
+ * clear(), so a column this never names goes on wearing whatever size an earlier layout
+ * gave it - which is how the old "Time of Best Round" left two round columns at 140px.
+ *
+ * Run after the table is written and before the two preamble rows are. Auto-fit measures
+ * every cell in a column, and those rows hold one long line each: with them in place,
+ * column A comes out as wide as "Click here to update Ranking" and the whole point of a
+ * line that spills is lost.
+ *
+ * The blank columns are set by hand afterwards, because auto-fitting an empty column gives
+ * it a default width and being narrow is the only thing they do.
+ */
+function autoSizeRankingColumns_(sheet) {
+  sheet.autoResizeColumns(1, RANKING_OVERALL_END);
+  sheet.autoResizeColumns(RANKING_ROUND1_COLUMN, RANKING_ROUND_COLUMNS.length);
+  sheet.autoResizeColumns(RANKING_ROUND2_COLUMN, RANKING_ROUND_COLUMNS.length);
+
+  sheet.setColumnWidth(RANKING_SPACER1_COLUMN, RANKING_SPACER_WIDTH);
+  sheet.setColumnWidth(RANKING_SPACER2_COLUMN, RANKING_SPACER_WIDTH);
 }
 
 function writeRankingRows_(sheet, teams, runs, sep) {
