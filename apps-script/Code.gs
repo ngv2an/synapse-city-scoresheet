@@ -86,6 +86,14 @@ const RANKING_ROUND1_COLUMN = 2;
 const RANKING_UPDATED_COLUMN = RANKING_ROUND1_COLUMN + 2;
 const RANKING_SPACER_COLUMN = RANKING_ROUND1_COLUMN + RANKING_ROUND_COLUMNS.length;
 const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
+// Row 1 in two halves. The link and the rebuild time take the left, the schedule warning
+// takes the right, and each gets the whole half to spill across - nothing sits between them
+// to clip anything. Column H happens to be where Round 2 starts; that is geometry, not
+// meaning.
+const RANKING_INVALID_COLUMN = RANKING_ROUND2_COLUMN;
+const RANKING_INVALID_NOTE = 'A submission is ranked only if it landed on the Competition '
+  + 'Date and inside its own round: Round 1 Time to Round 2 Time, Round 2 Time to End Time. '
+  + 'Both ends count as inside. A bound left blank in Config is not checked at all.';
 // The top five is read off Raw Score, the column the app actually produces. Normalized
 // Score beside it is derived from that same five, so ranking on it would be circular.
 const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
@@ -1406,10 +1414,13 @@ function buildRankingSheet(sheetId) {
 
   if (!scores) throw new Error('No "' + SCORE_SHEET_PREFIX + levelTitle + '" tab in this file.');
 
-  const runs = readLatestRuns_(scores);
+  // Read once and used twice: the roster below, and the schedule that decides which
+  // submissions are allowed to count at all.
+  const config = readConfig_(ss);
+  const tally = readLatestRuns_(scores, config, ss.getSpreadsheetTimeZone());
   // Exactly the Config list, in Config order. The ranking is the roster, so a team with no
   // run yet still gets its row and nothing outside Config gets one at all.
-  const teams = readConfig_(ss).teams;
+  const teams = config.teams;
   const name = RANKING_SHEET_PREFIX + levelTitle;
   const sheet = ss.getSheetByName(name) || ss.insertSheet(name);
 
@@ -1422,8 +1433,9 @@ function buildRankingSheet(sheetId) {
   // the width they guarantee.
   const sep = argumentSeparator_(sheet.getRange(RANKING_LINK_ROW, RANKING_SPACER_COLUMN));
 
-  writeRankingRows_(sheet, teams, runs, sep);
+  writeRankingRows_(sheet, teams, tally.runs, sep);
   applyTopScores_(sheet, sep);
+  writeInvalidNotice_(sheet, tally);
 
   // Last, so the stamp means "this tab was rebuilt" and not "a rebuild was attempted". A
   // step above throwing leaves the previous time standing, which is the true one.
@@ -1517,18 +1529,26 @@ function applyTopScores_(sheet, sep) {
 }
 
 /**
- * The last run each team made in each round, and how many they made.
+ * The last run each team made in each round, how many they made, and how many submissions
+ * were thrown out for landing outside the Config schedule.
  *
  * Latest is decided by the timestamp in column A rather than by position, so a Scores tab
  * somebody sorted by hand still reports the right run; position only breaks ties.
  *
  * Columns are found by header name, not by number. This tab has been widened twice already
  * and reading it by position is how a migration turns into wrong standings.
+ *
+ * An off-schedule submission is dropped before it is counted, so the Submission column
+ * counts what was ranked rather than what was sent. The two numbers differ, and the cell on
+ * row 1 is where the difference is reported.
  */
-function readLatestRuns_(sheet) {
+function readLatestRuns_(sheet, config, zone) {
   const data = sheet.getDataRange().getValues();
   const runs = {};
-  if (data.length < 2) return runs;
+  const tally = { runs: runs, invalid: 0, checked: 0 };
+  if (data.length < 2) return tally;
+
+  const schedule = rankingSchedule_(config);
 
   const header = data[0].map(function (value) { return cellText_(value); });
   const columnOf = function (names) {
@@ -1556,11 +1576,22 @@ function readLatestRuns_(sheet) {
     // A run with no round belongs in neither block - a test sent before Round 1 opened.
     if (!team || !round) continue;
 
+    const when = stampAt === -1 ? null : data[r][stampAt];
+
+    // No timestamp column at all means there is nothing to check against, and the whole
+    // schedule quietly stands down rather than voiding every row on the tab.
+    if (stampAt !== -1) {
+      tally.checked += 1;
+      if (!onSchedule_(when, round, schedule, zone)) {
+        tally.invalid += 1;
+        continue;
+      }
+    }
+
     const key = team + '\t' + round;
     const entry = runs[key] || (runs[key] = { count: 0, stamp: -1, order: -1 });
     entry.count += 1;
 
-    const when = stampAt === -1 ? null : data[r][stampAt];
     const stamp = Object.prototype.toString.call(when) === '[object Date]' ? when.getTime() : 0;
     if (stamp < entry.stamp || (stamp === entry.stamp && r < entry.order)) continue;
 
@@ -1571,7 +1602,107 @@ function readLatestRuns_(sheet) {
     entry.tries = tryAt === -1 ? '' : cellText_(data[r][tryAt]);
   }
 
-  return runs;
+  return tally;
+}
+
+/**
+ * Config's schedule reduced to what a submission can be measured against: one day, and one
+ * open window per round.
+ *
+ * Anything Config does not say - or says in a way this cannot read - comes back null, and
+ * the check it would have driven is simply not made. That direction is the whole point. The
+ * Config tab is edited by hand while the event runs, and a blank End Time voiding every
+ * Round 2 run would be a far worse failure than not checking one.
+ */
+function rankingSchedule_(config) {
+  const round1 = parseConfigClock_(findRoundTime_(config.rounds, 1));
+  const round2 = parseConfigClock_(findRoundTime_(config.rounds, 2));
+  const end = parseConfigClock_(config.endTime);
+
+  return {
+    day: parseConfigDay_(config.competitionDate),
+    // Round 1 closes when Round 2 opens; Round 2 closes at the end. With no Round 2 Time,
+    // Round 1 runs to the end of the day instead - one round, rather than none.
+    windows: { '1': [round1, round2 === null ? end : round2], '2': [round2, end] }
+  };
+}
+
+/**
+ * Whether one submission is allowed to count.
+ *
+ * Both ends of a window are inside it. The round is not being worked out here - the judge
+ * already declared it - so a run sent at the exact minute Round 2 opens needs no tie-break,
+ * and being lenient at a boundary costs less than dropping a real score.
+ */
+function onSchedule_(when, round, schedule, zone) {
+  if (Object.prototype.toString.call(when) !== '[object Date]') return false;
+
+  // A time-only cell in Sheets sits on 1899-12-30 and carries no date worth comparing.
+  if (schedule.day && when.getFullYear() > 1900
+    && Utilities.formatDate(when, zone, 'yyyy-MM-dd') !== schedule.day) {
+    return false;
+  }
+
+  // Read through the file's timezone, the same one the date was read through. getHours()
+  // would answer in the script's zone, and the two need not be the same zone.
+  const at = parseConfigClock_(Utilities.formatDate(when, zone, 'HH:mm:ss'));
+  // A round Config says nothing about - a stray Round 3 - is left exactly as it was found.
+  const window = schedule.windows[round] || [null, null];
+
+  if (window[0] !== null && at < window[0]) return false;
+  if (window[1] !== null && at > window[1]) return false;
+  return true;
+}
+
+/** 'dd/MM/yyyy', 'd/M/yyyy' or 'yyyy-MM-dd' to 'yyyy-MM-dd'. null when it is none of them. */
+function parseConfigDay_(text) {
+  const value = String(text || '').trim();
+
+  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
+  if (slash) return slash[3] + '-' + pad2_(slash[2]) + '-' + pad2_(slash[1]);
+
+  const dash = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
+  if (dash) return dash[1] + '-' + pad2_(dash[2]) + '-' + pad2_(dash[3]);
+
+  return null;
+}
+
+/** 'HH:mm' or 'HH:mm:ss' to seconds since midnight. null when it is neither. */
+function parseConfigClock_(text) {
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(text || '').trim());
+  if (!match) return null;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3] || 0);
+  if (hours > 23 || minutes > 59 || seconds > 59) return null;
+
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+function pad2_(value) {
+  return ('0' + value).slice(-2);
+}
+
+/**
+ * How many submissions the schedule threw out, on row 1 where the rebuild link is.
+ *
+ * Red and bold only when the number is not zero: a count that changes nothing should not
+ * look like a warning, and a count that does should not have to be hunted for.
+ */
+function writeInvalidNotice_(sheet, tally) {
+  const bad = tally.invalid;
+  const text = 'Invalid submissions: ' + bad + ' of ' + tally.checked
+    + (bad ? ' (off the Config schedule, not ranked)' : '');
+
+  sheet.getRange(RANKING_LINK_ROW, RANKING_INVALID_COLUMN)
+    .setNumberFormat('@')
+    .setValue(text)
+    .setHorizontalAlignment('left')
+    .setFontWeight(bad ? 'bold' : 'normal')
+    .setFontStyle(bad ? 'normal' : 'italic')
+    .setFontColor(bad ? '#b3261e' : '#5f6368')
+    .setNote(RANKING_INVALID_NOTE);
 }
 
 /**
