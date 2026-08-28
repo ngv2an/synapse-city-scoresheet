@@ -58,7 +58,7 @@ const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
 
 /**
  * Ranking layout: Team ID, then five columns for Round 1, one blank column, the same five
- * for Round 2, and two columns of Overall Result on the end. A link row on top, then two
+ * for Round 2, and four columns of Overall Result on the end. A link row on top, then two
  * header rows, the upper one naming the three blocks - and, as in the round blocks, naming
  * each one only on the column it starts at.
  *
@@ -95,19 +95,30 @@ const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
 const RANKING_NORMALIZED_SCALE = 100;
 const RANKING_NORMALIZED_DIGITS = '0.00';
 const RANKING_NORMALIZED_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Normalized Score');
-// Column M, straight after Round 2 with no spacer: the better of a team's two normalized
-// runs. Two rounds measured against their own round's top five are on one scale by
-// construction, which is what makes taking the larger of them meaningful.
+// Columns M to P, straight after Round 2 with no spacer, and driven off a list the way the
+// round blocks are. All four are read from the pair of Normalized Scores, which sit on one
+// scale by construction - each already measured against its own round's top five - and that
+// is the whole reason a team's two rounds can be compared to each other at all.
 const RANKING_OVERALL_COLUMN = RANKING_ROUND2_COLUMN + RANKING_ROUND_COLUMNS.length;
 const RANKING_OVERALL_GROUP = 'Overall Result';
-const RANKING_OVERALL_LABEL = 'Best Score';
-// Column N, the second half of that block: how far apart the team's two rounds were. Low is
-// steady, which is the opposite direction to every other number on this tab, so the header
-// carries a note saying so.
-const RANKING_CONSISTENCY_COLUMN = RANKING_OVERALL_COLUMN + 1;
-const RANKING_CONSISTENCY_LABEL = 'Consistency';
+const RANKING_OVERALL_COLUMNS = [
+  'Best Score', 'Consistency', 'Time of Best Round', 'Try of Best Round'
+];
+const RANKING_OVERALL_END = RANKING_OVERALL_COLUMN + RANKING_OVERALL_COLUMNS.length - 1;
+const RANKING_CONSISTENCY_COLUMN =
+  RANKING_OVERALL_COLUMN + RANKING_OVERALL_COLUMNS.indexOf('Consistency');
+const RANKING_BEST_TIME_COLUMN =
+  RANKING_OVERALL_COLUMN + RANKING_OVERALL_COLUMNS.indexOf('Time of Best Round');
+const RANKING_BEST_TRY_COLUMN =
+  RANKING_OVERALL_COLUMN + RANKING_OVERALL_COLUMNS.indexOf('Try of Best Round');
+// Consistency runs the opposite direction to every other number on this tab - low is steady
+// - so its header carries a note saying so.
 const RANKING_CONSISTENCY_NOTE = 'Consistency: the gap between the two Normalized Scores. '
   + 'Lower is steadier. Blank until the team has run both rounds.';
+// Time and Try are copied off whichever round produced the Best Score, not off the better
+// time and the better try picked separately, which would describe a run nobody made.
+const RANKING_TIME_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Time');
+const RANKING_TRY_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Try');
 const RANKING_TOP_COUNT = 5;
 const RANKING_TOP_BACKGROUND = '#e6f4ea';
 // Base Top Score: the mean of those top five, in the header cell above the column they are
@@ -1596,7 +1607,7 @@ function writeRankingLink_(sheet, sheetId) {
 }
 
 function writeRankingHeaders_(sheet) {
-  const width = RANKING_CONSISTENCY_COLUMN;
+  const width = RANKING_OVERALL_END;
   if (sheet.getMaxColumns() < width) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
   }
@@ -1612,8 +1623,9 @@ function writeRankingHeaders_(sheet) {
     labels[RANKING_ROUND1_COLUMN - 1 + i] = label;
     labels[RANKING_ROUND2_COLUMN - 1 + i] = label;
   });
-  labels[RANKING_OVERALL_COLUMN - 1] = RANKING_OVERALL_LABEL;
-  labels[RANKING_CONSISTENCY_COLUMN - 1] = RANKING_CONSISTENCY_LABEL;
+  RANKING_OVERALL_COLUMNS.forEach(function (label, i) {
+    labels[RANKING_OVERALL_COLUMN - 1 + i] = label;
+  });
 
   sheet.getRange(RANKING_GROUP_ROW, 1, 2, width).setValues([group, labels]).setFontWeight('bold');
   sheet.getRange(RANKING_HEADER_ROW, RANKING_CONSISTENCY_COLUMN)
@@ -1623,6 +1635,10 @@ function writeRankingHeaders_(sheet) {
   sheet.setColumnWidth(RANKING_SPACER_COLUMN, 24);
   sheet.setColumnWidth(RANKING_OVERALL_COLUMN, 100);
   sheet.setColumnWidth(RANKING_CONSISTENCY_COLUMN, 100);
+  // Wider: these two headers are longer than anything under them, and unlike the link on
+  // row 1 they have a filled cell on either side, so there is nothing to spill into.
+  sheet.setColumnWidth(RANKING_BEST_TIME_COLUMN, 140);
+  sheet.setColumnWidth(RANKING_BEST_TRY_COLUMN, 140);
 }
 
 function writeRankingRows_(sheet, teams, runs, sep) {
@@ -1636,7 +1652,8 @@ function writeRankingRows_(sheet, teams, runs, sep) {
   // when that column held a formula nobody here had written; it holds one written below now.
   if (height > 0) {
     sheet.getRange(RANKING_FIRST_DATA_ROW, 1, height, 1).clearContent();
-    sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_OVERALL_COLUMN, height, 2).clearContent();
+    sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_OVERALL_COLUMN, height,
+      RANKING_OVERALL_COLUMNS.length).clearContent();
     [RANKING_ROUND1_COLUMN, RANKING_ROUND2_COLUMN].forEach(function (column) {
       sheet.getRange(RANKING_FIRST_DATA_ROW, column, height, RANKING_ROUND_COLUMNS.length)
         .clearContent();
@@ -1666,35 +1683,61 @@ function writeRankingRows_(sheet, teams, runs, sep) {
 }
 
 /**
- * The two Overall Result columns, both read off the same pair of Normalized Scores.
+ * The four Overall Result columns, all read off the same pair of Normalized Scores.
  *
  * Best Score is the better of the two. Consistency is how far apart they were - the same
- * pair, asked how steady rather than how high.
+ * pair, asked how steady rather than how high. Time and Try are lifted off whichever round
+ * won, so the four columns describe one actual run of one team.
  *
- * Both are comparable across rounds because each side is already a ratio against its own
+ * They are comparable across rounds because each side is already a ratio against its own
  * round's top five, so a hard Round 2 does not quietly outrank an easy Round 1, and a gap
  * between the rounds means the team moved rather than the course.
  *
- * The two COUNT guards differ on purpose, and that is the whole design here. Best Score
- * needs one run: a team that ran only Round 1 is judged on Round 1, which MAX gives for
- * free, and only a team that never went out has no best score - =0 rather than an empty
- * MAX, which would read 0 and rank them below the worst real run. Consistency needs both:
- * with one round missing ABS would return that round's own score, and a team that has run
- * once would show up as wildly inconsistent for no reason but the schedule. So =2, and
- * blank until the second run lands.
+ * The COUNT guards differ on purpose, and that is the whole design here. Best Score needs
+ * one run: a team that ran only Round 1 is judged on Round 1, which MAX gives for free, and
+ * only a team that never went out has no best score - =0 rather than an empty MAX, which
+ * would read 0 and rank them below the worst real run. Consistency needs both: with one
+ * round missing ABS would return that round's own score, and a team that has run once would
+ * show up as wildly inconsistent for no reason but the schedule. So =2, and blank until the
+ * second run lands.
+ *
+ * N() around each side of the comparison is not decoration. An empty Normalized Score is
+ * the string "" and not a blank cell, and Sheets sorts text above every number, so a plain
+ * D>=J is TRUE for a team that has only run Round 2 and would report Round 1's empty Time.
+ * N() reads "" as 0 and the comparison means what it looks like it means.
+ *
+ * Round 1 takes a tie, and both columns are built from one shared prefix so they cannot
+ * disagree about which round won - a row showing Round 1's time beside Round 2's try would
+ * be a run that never happened.
  */
 function writeOverallColumns_(sheet, rows, sep) {
   const first = columnLetter_(RANKING_ROUND1_COLUMN + RANKING_NORMALIZED_OFFSET);
   const second = columnLetter_(RANKING_ROUND2_COLUMN + RANKING_NORMALIZED_OFFSET);
+  const time1 = columnLetter_(RANKING_ROUND1_COLUMN + RANKING_TIME_OFFSET);
+  const time2 = columnLetter_(RANKING_ROUND2_COLUMN + RANKING_TIME_OFFSET);
+  const try1 = columnLetter_(RANKING_ROUND1_COLUMN + RANKING_TRY_OFFSET);
+  const try2 = columnLetter_(RANKING_ROUND2_COLUMN + RANKING_TRY_OFFSET);
 
   const best = [];
   const gap = [];
+  const bestTime = [];
+  const bestTry = [];
+
   for (let i = 0; i < rows; i++) {
     const row = RANKING_FIRST_DATA_ROW + i;
-    const pair = first + row + sep + second + row;
-    best.push(['=IF(COUNT(' + pair + ')=0' + sep + '""' + sep + 'MAX(' + pair + '))']);
-    gap.push(['=IF(COUNT(' + pair + ')=2' + sep
-      + 'ABS(' + first + row + '-' + second + row + ')' + sep + '"")']);
+    const a = first + row;
+    const b = second + row;
+    const pair = a + sep + b;
+    const ran = 'COUNT(' + pair + ')';
+
+    // Shared by the two "of Best Round" columns, so one edit cannot move only one of them.
+    const won = '=IF(' + ran + '=0' + sep + '""' + sep
+      + 'IF(N(' + a + ')>=N(' + b + ')' + sep;
+
+    best.push(['=IF(' + ran + '=0' + sep + '""' + sep + 'MAX(' + pair + '))']);
+    gap.push(['=IF(' + ran + '=2' + sep + 'ABS(' + a + '-' + b + ')' + sep + '"")']);
+    bestTime.push([won + time1 + row + sep + time2 + row + '))']);
+    bestTry.push([won + try1 + row + sep + try2 + row + '))']);
   }
 
   // The same format as the columns they are read from: one number must not read two ways
@@ -1705,6 +1748,13 @@ function writeOverallColumns_(sheet, rows, sep) {
   sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_CONSISTENCY_COLUMN, rows, 1)
     .setFormulas(gap)
     .setNumberFormat(RANKING_NORMALIZED_DIGITS);
+
+  // No format set on these two: they are copies, and Time in particular is the judge's own
+  // "1:23.45" text. Handing it a number format is how it turns into something else.
+  sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_BEST_TIME_COLUMN, rows, 1)
+    .setFormulas(bestTime);
+  sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_BEST_TRY_COLUMN, rows, 1)
+    .setFormulas(bestTry);
 }
 
 /**
