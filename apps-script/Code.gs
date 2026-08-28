@@ -57,40 +57,57 @@ const DRIVE_FOLDER_ID = '1c6iWXPivzN28jq27S_5Zkj6gUC28ms2C';
 const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
 
 /**
- * Ranking layout: Team ID, then five columns for Round 1, one blank column, the same five
- * for Round 2, and four columns of Overall Result on the end. A link row on top, then two
- * header rows, the upper one naming the three blocks - and, as in the round blocks, naming
- * each one only on the column it starts at.
+ * Ranking layout, five rows of preamble and then the table:
  *
- * The link row exists because a rebuild is a manual act and the standings are where people
- * notice they are stale. Putting the rebuild where they are already looking beats asking
- * them to find the script editor. The same row says when the rebuild last ran, which is the
- * question that makes anyone reach for the link in the first place.
+ *   1  Last Updated at ...            2  Click here to update Ranking
+ *   3  (blank, and the tab's one guaranteed-empty cell)
+ *   4  group row:   Overall Result | Round 1 | Round 2
+ *   5  header row:  Team ID, then each block's own column names
+ *   6+ one row per team, in Config order
  *
- * Every column of the block is written by a rebuild now, Normalized Score included. It was
- * left alone for as long as nothing here defined what normalising meant; Base Top Score
- * defines it, so the column stopped being somebody else's.
+ * Each of the first two rows carries one thing, in column A, with the whole width to spill
+ * across. They used to share row 1 and had to be spaced apart by hand so neither clipped
+ * the other; a row each costs nothing and ends that arithmetic.
+ *
+ * Overall Result comes first because it is the answer. Round 1 and Round 2 are the working
+ * behind it, and a reader who wants only the standings should not have to cross ten columns
+ * of it to arrive. The two round blocks keep their order, separated by a blank column each,
+ * so the three blocks read as three.
+ *
+ * Every column is written by a rebuild, Normalized Score included. It was left alone for as
+ * long as nothing here defined what normalising meant; Base Top Score defines it, so the
+ * column stopped being somebody else's.
  */
 const RANKING_SHEET_PREFIX = 'Ranking - ';
 const RANKING_ROUND_COLUMNS = ['Submission', 'Raw Score', 'Normalized Score', 'Time', 'Try'];
-const RANKING_LINK_ROW = 1;
+const RANKING_OVERALL_GROUP = 'Overall Result';
+const RANKING_OVERALL_COLUMNS = [
+  'Best Score', 'Consistency', 'Time of Best Round', 'Try of Best Round'
+];
 const RANKING_LINK_LABEL = 'Click here to update Ranking';
 const RANKING_UPDATED_LABEL = 'Last Updated at ';
 const RANKING_UPDATED_FORMAT = 'HH:mm:ss dd/MM/yyyy';
-const RANKING_GROUP_ROW = RANKING_LINK_ROW + 1;
-const RANKING_HEADER_ROW = RANKING_GROUP_ROW + 1;
-const RANKING_FIRST_DATA_ROW = RANKING_HEADER_ROW + 1;
-const RANKING_ROUND1_COLUMN = 2;
-// Column D, two clear columns after the link. A is 110px and the label is wider than that,
-// so B and C are the room it spills into; anything written there would clip it instead.
-const RANKING_UPDATED_COLUMN = RANKING_ROUND1_COLUMN + 2;
-const RANKING_SPACER_COLUMN = RANKING_ROUND1_COLUMN + RANKING_ROUND_COLUMNS.length;
-const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
-// Row 1 in two halves. The link and the rebuild time take the left, the schedule warning
-// takes the right, and each gets the whole half to spill across - nothing sits between them
-// to clip anything. Column H happens to be where Round 2 starts; that is geometry, not
-// meaning.
-const RANKING_INVALID_COLUMN = RANKING_ROUND2_COLUMN;
+
+// Rows, top to bottom. Row 3 stays empty by design and is the one cell on the tab that can
+// be borrowed for a moment without asking what is in it - see the separator probe.
+const RANKING_UPDATED_ROW = 1;
+const RANKING_LINK_ROW = 2;
+const RANKING_BLANK_ROW = 3;
+const RANKING_GROUP_ROW = 4;
+const RANKING_HEADER_ROW = 5;
+const RANKING_FIRST_DATA_ROW = 6;
+
+// Columns, left to right: A, then three blocks with a blank column between them.
+const RANKING_OVERALL_COLUMN = 2;
+const RANKING_OVERALL_END = RANKING_OVERALL_COLUMN + RANKING_OVERALL_COLUMNS.length - 1;
+const RANKING_SPACER1_COLUMN = RANKING_OVERALL_END + 1;
+const RANKING_ROUND1_COLUMN = RANKING_SPACER1_COLUMN + 1;
+const RANKING_SPACER2_COLUMN = RANKING_ROUND1_COLUMN + RANKING_ROUND_COLUMNS.length;
+const RANKING_ROUND2_COLUMN = RANKING_SPACER2_COLUMN + 1;
+const RANKING_LAST_COLUMN = RANKING_ROUND2_COLUMN + RANKING_ROUND_COLUMNS.length - 1;
+// Right of the rebuild time, on the same row, far enough that neither clips the other.
+// Where Round 1 starts is geometry, not meaning.
+const RANKING_INVALID_COLUMN = RANKING_ROUND1_COLUMN;
 const RANKING_INVALID_NOTE = 'A submission is ranked only if it landed on the Competition '
   + 'Date, between Round 1 Time and End Time. Both ends count as inside. A bound left blank '
   + 'in Config is not checked at all. Test Submission answers to the date alone.';
@@ -106,16 +123,10 @@ const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
 const RANKING_NORMALIZED_SCALE = 100;
 const RANKING_NORMALIZED_DIGITS = '0.00';
 const RANKING_NORMALIZED_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Normalized Score');
-// Columns M to P, straight after Round 2 with no spacer, and driven off a list the way the
-// round blocks are. All four are read from the pair of Normalized Scores, which sit on one
-// scale by construction - each already measured against its own round's top five - and that
-// is the whole reason a team's two rounds can be compared to each other at all.
-const RANKING_OVERALL_COLUMN = RANKING_ROUND2_COLUMN + RANKING_ROUND_COLUMNS.length;
-const RANKING_OVERALL_GROUP = 'Overall Result';
-const RANKING_OVERALL_COLUMNS = [
-  'Best Score', 'Consistency', 'Time of Best Round', 'Try of Best Round'
-];
-const RANKING_OVERALL_END = RANKING_OVERALL_COLUMN + RANKING_OVERALL_COLUMNS.length - 1;
+// The Overall Result block, driven off a list the way the round blocks are. All four are
+// read from the pair of Normalized Scores, which sit on one scale by construction - each
+// already measured against its own round's top five - and that is the whole reason a team's
+// two rounds can be compared to each other at all.
 const RANKING_CONSISTENCY_COLUMN =
   RANKING_OVERALL_COLUMN + RANKING_OVERALL_COLUMNS.indexOf('Consistency');
 const RANKING_BEST_TIME_COLUMN =
@@ -1427,14 +1438,14 @@ function buildRankingSheet(sheetId) {
   const name = RANKING_SHEET_PREFIX + levelTitle;
   const sheet = ss.getSheetByName(name) || ss.insertSheet(name);
 
-  ensureRankingLinkRow_(sheet);
+  ensureRankingLayout_(sheet);
   writeRankingLink_(sheet, ss.getId());
   writeRankingHeaders_(sheet);
 
-  // Probed once here rather than inside each writer. It costs a write and a flush, and both
-  // of them need it; the headers have to be down first, because the probe cell sits inside
-  // the width they guarantee.
-  const sep = argumentSeparator_(sheet.getRange(RANKING_LINK_ROW, RANKING_SPACER_COLUMN));
+  // Probed once here rather than inside each writer: it costs a write and a flush, and all
+  // of them need it. A3 is the blank row, so this borrows the one cell on the tab that is
+  // guaranteed to have nothing to put back.
+  const sep = argumentSeparator_(sheet.getRange(RANKING_BLANK_ROW, 1));
 
   writeRankingRows_(sheet, teams, tally.runs, sep);
   applyTopScores_(sheet, sep);
@@ -1468,7 +1479,7 @@ function writeRankingStamp_(sheet) {
 
   // Plain-text format first, so a tab rebuilt by the previous version - which left a date
   // format on this cell - does not try to read the string back as a date.
-  sheet.getRange(RANKING_LINK_ROW, RANKING_UPDATED_COLUMN)
+  sheet.getRange(RANKING_UPDATED_ROW, 1)
     .setNumberFormat('@')
     .setValue(RANKING_UPDATED_LABEL + when)
     .setHorizontalAlignment('left')
@@ -1705,7 +1716,7 @@ function writeInvalidNotice_(sheet, tally) {
   const text = 'Invalid submissions: ' + bad + ' of ' + tally.checked
     + (bad ? ' (off the Config schedule, not ranked)' : '');
 
-  sheet.getRange(RANKING_LINK_ROW, RANKING_INVALID_COLUMN)
+  sheet.getRange(RANKING_UPDATED_ROW, RANKING_INVALID_COLUMN)
     .setNumberFormat('@')
     .setValue(text)
     .setHorizontalAlignment('left')
@@ -1716,17 +1727,32 @@ function writeInvalidNotice_(sheet, tally) {
 }
 
 /**
- * Makes room for the link row on a tab built before it existed.
+ * A tab left over from an older layout is cleared rather than migrated.
  *
- * Inserted rather than written over: the Normalized Score columns hold somebody else's
- * formulas, and those have to move down with the team they belong to. Recognised by the
- * group header sitting on row 1, which is only true of the old layout, so a rebuild of an
- * already-migrated tab - or a brand new empty one - does nothing here.
+ * Everything on this tab is written by the rebuild below - values, formulas, formats and
+ * notes alike - so a wipe loses nothing that the next few lines do not put back. Migrating
+ * would mean moving three column blocks and three rows, in an order that depends on which
+ * previous layout it happens to be, to arrive at precisely what a clear and a rebuild give
+ * for free.
+ *
+ * Recognised by the group row saying what this version expects it to say, so a tab already
+ * in this shape is left alone and any future move of the furniture is handled the same way.
+ * Conditional formatting survives a clear(), which is why applyTopScores_ replaces the whole
+ * rule set rather than adding to it.
  */
-function ensureRankingLinkRow_(sheet) {
-  if (cellText_(sheet.getRange(1, RANKING_ROUND1_COLUMN).getValue()) === 'Round 1') {
-    sheet.insertRowBefore(1);
-  }
+function ensureRankingLayout_(sheet) {
+  const marker = sheet.getRange(RANKING_GROUP_ROW, RANKING_OVERALL_COLUMN).getValue();
+  if (cellText_(marker) !== RANKING_OVERALL_GROUP) sheet.clear();
+
+  // Notes go on every rebuild, not only on a layout change. clear() takes content and
+  // formatting and leaves notes precisely where they were, so a note written by an older
+  // layout outlives both the value it described and the wipe meant to remove it. It also
+  // outlives the marker above - one rebuild sets that, and from then on the check passes
+  // and the stale notes are never reached - which is why this cannot sit behind it.
+  //
+  // The three notes this version wants are written back a few lines below, so what a reader
+  // hovers over is always what this version had to say.
+  sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).clearNote();
 }
 
 /**
@@ -1748,36 +1774,47 @@ function writeRankingLink_(sheet, sheetId) {
 }
 
 function writeRankingHeaders_(sheet) {
-  const width = RANKING_OVERALL_END;
+  const width = RANKING_LAST_COLUMN;
   if (sheet.getMaxColumns() < width) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
   }
 
+  // A block is named on the column it starts at and nowhere else, so the group row reads as
+  // three headings over three stretches rather than as a row of repeated words.
   const group = new Array(width).fill('');
+  group[RANKING_OVERALL_COLUMN - 1] = RANKING_OVERALL_GROUP;
   group[RANKING_ROUND1_COLUMN - 1] = 'Round 1';
   group[RANKING_ROUND2_COLUMN - 1] = 'Round 2';
-  group[RANKING_OVERALL_COLUMN - 1] = RANKING_OVERALL_GROUP;
 
   const labels = new Array(width).fill('');
   labels[0] = 'Team ID';
+  RANKING_OVERALL_COLUMNS.forEach(function (label, i) {
+    labels[RANKING_OVERALL_COLUMN - 1 + i] = label;
+  });
   RANKING_ROUND_COLUMNS.forEach(function (label, i) {
     labels[RANKING_ROUND1_COLUMN - 1 + i] = label;
     labels[RANKING_ROUND2_COLUMN - 1 + i] = label;
-  });
-  RANKING_OVERALL_COLUMNS.forEach(function (label, i) {
-    labels[RANKING_OVERALL_COLUMN - 1 + i] = label;
   });
 
   sheet.getRange(RANKING_GROUP_ROW, 1, 2, width).setValues([group, labels]).setFontWeight('bold');
   sheet.getRange(RANKING_HEADER_ROW, RANKING_CONSISTENCY_COLUMN)
     .setNote(RANKING_CONSISTENCY_NOTE);
+  // Through the header row, so the two preamble rows and both headings stay on screen while
+  // the standings scroll. The blank row is inside that and is what separates the two.
   sheet.setFrozenRows(RANKING_HEADER_ROW);
+
+  // Set outright rather than left to default, both blocks of them: a column keeps its width
+  // through a clear(), so anything not named here goes on wearing the size some earlier
+  // layout gave it.
+  sheet.setColumnWidths(RANKING_ROUND1_COLUMN, RANKING_ROUND_COLUMNS.length, 100);
+  sheet.setColumnWidths(RANKING_ROUND2_COLUMN, RANKING_ROUND_COLUMNS.length, 100);
   sheet.setColumnWidth(1, 110);
-  sheet.setColumnWidth(RANKING_SPACER_COLUMN, 24);
+  sheet.setColumnWidth(RANKING_SPACER1_COLUMN, 24);
+  sheet.setColumnWidth(RANKING_SPACER2_COLUMN, 24);
   sheet.setColumnWidth(RANKING_OVERALL_COLUMN, 100);
   sheet.setColumnWidth(RANKING_CONSISTENCY_COLUMN, 100);
-  // Wider: these two headers are longer than anything under them, and unlike the link on
-  // row 1 they have a filled cell on either side, so there is nothing to spill into.
+  // Wider: these two headers are longer than anything under them, and unlike the two rows
+  // above they have a filled cell on either side, so there is nothing to spill into.
   sheet.setColumnWidth(RANKING_BEST_TIME_COLUMN, 140);
   sheet.setColumnWidth(RANKING_BEST_TRY_COLUMN, 140);
 }
