@@ -802,11 +802,54 @@ body {
 }
 
 /* Photo action below the scoring tables. */
+/* Consent above the button, so the bar reads top to bottom in the order it happens: agree
+   the result, then photograph and send it. */
 .score-action-bar {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   width: 100%;
+}
+
+/* Photo waits on the tickbox above it. Dimmed rather than hidden, so what is waiting and
+   what it is waiting for are both on screen at once. */
+.btn-action:disabled {
+  opacity: 0.45;
+  filter: grayscale(0.4);
+  cursor: not-allowed;
+}
+
+/* The whole row is the label, so the team name is as tappable as the box - on a tablet held
+   at arm's length the box alone is a target worth missing. */
+.consent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+  cursor: pointer;
+  user-select: none;
+}
+
+.consent-row input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: #16a34a;
+  cursor: pointer;
+}
+
+/* Ticked reads as done rather than as merely different, which is the same green the Submit
+   button turns. */
+.consent-row:has(input:checked) {
+  background: #e6f4ea;
+  color: #166534;
 }
 
 .btn-action {

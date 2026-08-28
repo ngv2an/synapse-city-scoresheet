@@ -59,6 +59,8 @@ const SynapseScoresheet = (() => {
   const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
   const DEFAULT_MISSION_TIME = '2:00.00';
+  // The team's own ID is appended to this, so it reads "Result Agreed by Team A3".
+  const CONSENT_LABEL = 'Result Agreed by Team';
   // A run is two minutes. The box opens on the limit itself, which is why the two read
   // alike. The minute cap is separate and larger on purpose: it guards the shape of the
   // value rather than the rule, and outlives any change to how long a run lasts.
@@ -500,6 +502,7 @@ const SynapseScoresheet = (() => {
         tryTyped: tryInput ? tryInput.value : '',
         scores: Object.assign({}, scoreState),
         leanbots: Object.assign({}, leanbotState),
+        consent: !!(document.getElementById('consent-check') || {}).checked,
       }));
     } catch (e) {}
   }
@@ -550,6 +553,9 @@ const SynapseScoresheet = (() => {
       tryInput.value = String(draft.tryTyped || legacyTyped || '').replace(/\D/g, '').slice(0, 2);
     }
     syncTryValueFromBox();
+    // Kept across a reload: the same judge is still on the same run, and asking the team to
+    // agree a second time because a tablet went to sleep would teach them to tick blind.
+    setConsent_(draft.consent === true);
   }
 
   function isMissionDisabled(blockId, missionType) {
@@ -1296,6 +1302,32 @@ const SynapseScoresheet = (() => {
     return '';
   }
 
+  /**
+   * The consent tickbox names the team it is agreeing for.
+   *
+   * Rulebook 10.4 has the Team Leader confirm the result before it is final, and a box
+   * reading "Result Agreed" alone could be ticked for whoever happened to be selected. With
+   * the team in the label a mistap on the list is something you read rather than something
+   * you find out about afterwards.
+   */
+  function renderConsentLabel_() {
+    const label = document.getElementById('consent-label');
+    if (!label) return;
+
+    const team = getSelectedTeam();
+    label.textContent = CONSENT_LABEL + (team ? ' ' + team : '');
+  }
+
+  /** Agreement belongs to one run. It is never carried into the next one by default. */
+  function setConsent_(on) {
+    const consent = document.getElementById('consent-check');
+    if (consent) consent.checked = !!on;
+
+    // Every path that clears or restores the box goes through here, so this is the one
+    // place the two buttons have to be told about it.
+    applyConsentLock_();
+  }
+
   /** Red on the field, or not, from one place - three callers ask the same question. */
   function markMissionTime_(input) {
     if (!input) return '';
@@ -1431,6 +1463,7 @@ const SynapseScoresheet = (() => {
 
     initScoreState();
     clearPhoto();
+    setConsent_(false);
     renderTable();
   }
 
@@ -1462,16 +1495,45 @@ const SynapseScoresheet = (() => {
     failed: ['Failed to Submit', ' is-failed']
   };
 
+  // States in which the run itself owns the button. Consent cannot re-open one that is in
+  // flight or already recorded; 'failed' is left out because the retry is the whole point.
+  const SUBMIT_SENT_STATES = ['sending', 'done', 'queued'];
+  // Remembered so applyConsentLock_ can re-apply the same state with a new answer to
+  // "has the team agreed", rather than guessing at one.
+  let submitState = 'idle';
+
   function setSubmitButtonState_(state) {
+    submitState = state;
+
     const btn = document.getElementById('btn-submit');
     if (!btn) return;
 
     const spec = SUBMIT_BUTTON_STATES[state] || SUBMIT_BUTTON_STATES.idle;
     btn.textContent = spec[0];
     btn.className = 'btn-submit' + spec[1];
-    // Nothing left to press while a run is in flight or already recorded. A failed one is
-    // the opposite: the retry is the whole point of showing it.
-    btn.disabled = state === 'sending' || state === 'done' || state === 'queued';
+    // Two owners, one attribute: the run, and the team's agreement. Composed here so
+    // neither can quietly hand the button back while the other is still holding it.
+    btn.disabled = SUBMIT_SENT_STATES.indexOf(state) !== -1 || !hasConsent_();
+  }
+
+  /** Missing box means no gate. A control that is not there must not lock out the run. */
+  function hasConsent_() {
+    const consent = document.getElementById('consent-check');
+    return !consent || consent.checked;
+  }
+
+  /**
+   * Photo and Submit both wait on the tickbox.
+   *
+   * The bar reads in the order it happens - agree, photograph, send - so nothing below the
+   * agreement is reachable until it is given. It also means a photo is never taken against
+   * a result the team has not yet seen.
+   */
+  function applyConsentLock_() {
+    const photo = document.getElementById('btn-photo');
+    if (photo) photo.disabled = !hasConsent_();
+
+    setSubmitButtonState_(submitState);
   }
 
   /**
@@ -1990,6 +2052,7 @@ const SynapseScoresheet = (() => {
     // than on selectedIndex -1, which shows an empty box that cannot be explained.
     teamSelect.value = optionExists(teamSelect, currentVal) ? currentVal : TEST_TEAM;
     restoredTeam = teamSelect.value;
+    renderConsentLabel_();
   }
 
   // Everything a run is entered into. The Judge select and Reload Config are deliberately
@@ -2077,6 +2140,16 @@ const SynapseScoresheet = (() => {
     if (!team) {
       reasons.push('Team ID is required.');
       if (!focusTarget) focusTarget = document.getElementById('team-select');
+    }
+
+    // Rulebook 10.4: the team confirms the result, and it is final once confirmed. Checked
+    // here rather than left as a box nobody has to tick, because a consent step that can be
+    // walked past is not a step.
+    const consent = document.getElementById('consent-check');
+    if (consent && !consent.checked) {
+      reasons.push(team ? 'Result must be agreed by Team ' + team + '.'
+        : 'Result must be agreed by the team.');
+      if (!focusTarget) focusTarget = consent;
     }
 
     const timeInput = document.getElementById('mission-time');
@@ -2416,8 +2489,17 @@ const SynapseScoresheet = (() => {
           resetRunState();
           unlockRun_();
         }
+        renderConsentLabel_();
         saveDraft();
       });
+
+      const consentCheck = document.getElementById('consent-check');
+      if (consentCheck) {
+        consentCheck.addEventListener('change', () => {
+          applyConsentLock_();
+          saveDraft();
+        });
+      }
     }
 
     // Try buttons. Tapping one is also the way out of a half-typed box, so it clears
@@ -2582,6 +2664,9 @@ const SynapseScoresheet = (() => {
 
     initScoreState();
     restoreDraft();
+    // restoreDraft goes through setConsent_ and has already done this, but only when there
+    // was a draft to read. A first run on a new device has none.
+    applyConsentLock_();
     renderTable();
     renderTryButtons();
     renderSubmissionHistory_();

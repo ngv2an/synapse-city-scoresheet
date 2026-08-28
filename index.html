@@ -124,6 +124,13 @@
 
     <!-- Photo control stays below the two scoring tables. -->
     <section class="score-action-bar" aria-label="Photo + Consent">
+      <!-- Rulebook 10.4: the team agrees the result, and it is final once agreed. Above the
+           button because that is the order it happens in - agree, then photograph and send.
+           The team's own ID is written into the label by renderConsentLabel_. -->
+      <label class="consent-row" for="consent-check">
+        <input type="checkbox" id="consent-check">
+        <span id="consent-label">Result Agreed by Team</span>
+      </label>
       <button class="btn-action btn-photo" id="btn-photo" title="Photo + Consent">Photo + Consent</button>
     </section>
 
