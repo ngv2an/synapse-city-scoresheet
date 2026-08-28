@@ -353,7 +353,10 @@ body {
 /* Frozen after Submit: the run is on its way, or already recorded, so what it held must
    not drift out from under it. Dimmed less than the judge gate on purpose - the judge
    still reads back the numbers they just sent. */
-.is-run-locked {
+/* Agreed reads the same as sent, because it means the same thing to the numbers underneath:
+   settled, still legible, no longer yours to change. */
+.is-run-locked,
+.is-consent-locked {
   opacity: 0.62;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -363,7 +366,8 @@ body {
    so there is nothing for opacity to paint. Only pointer-events was getting through, since
    that one is inherited, which is why those two rows went dead without going grey while the
    score tables beside them dimmed. Their children do have boxes. */
-.entry-row.is-run-locked > * {
+.entry-row.is-run-locked > *,
+.entry-row.is-consent-locked > * {
   opacity: 0.62;
   transition: opacity 0.15s ease;
 }

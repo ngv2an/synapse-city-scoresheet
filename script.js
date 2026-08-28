@@ -1534,6 +1534,9 @@ const SynapseScoresheet = (() => {
     if (photo) photo.disabled = !hasConsent_();
 
     setSubmitButtonState_(submitState);
+    // And the other half of agreeing: the result stops being editable. Agreed to a set of
+    // numbers, then changing them, is the one sequence this step exists to prevent.
+    applyFormLocks_();
   }
 
   /**
@@ -2063,6 +2066,13 @@ const SynapseScoresheet = (() => {
   // picking another one is the way out - and neither is Submit, which reports the outcome.
   const RUN_LOCK_SECTIONS =
     '.entry-row-time, .entry-row-try, .table-wrap, .score-action-bar, .photo-preview-container';
+  // What agreeing freezes: the result itself, and nothing else.
+  //
+  // .score-action-bar is pointedly absent, and that absence is the whole design. It holds
+  // the tickbox, and locking it would make agreement a one-way door - ticked by a mistap
+  // and no way back but a page reload. The photo bar is out for the plainer reason that
+  // photographing happens after agreeing, not before.
+  const CONSENT_LOCK_SECTIONS = '.entry-row-time, .entry-row-try, .table-wrap';
 
   /**
    * Both locks on the run form, applied together.
@@ -2070,7 +2080,9 @@ const SynapseScoresheet = (() => {
    * The judge gate holds until a judge is picked, and only where there is a pick to make:
    * one judge is filled in automatically by applyMetadata, and the teams below belong to
    * whichever judge is chosen, so scoring before that is scoring against an empty list.
-   * The run lock holds from Submit until another team is picked.
+   * The run lock holds from Submit until another team is picked. The consent lock holds
+   * from the moment the team agrees the result until they take that back, and it is the
+   * only one of the three a judge can lift for themselves.
    *
    * Classes and `inert` rather than `disabled` on each control. The submit flow already
    * owns `disabled` on the Submit button, and two owners of one property is how a button
@@ -2081,12 +2093,16 @@ const SynapseScoresheet = (() => {
 
     setSectionLock_(JUDGE_GATE_SECTIONS, 'is-judge-locked', judgeLocked);
     setSectionLock_(RUN_LOCK_SECTIONS, 'is-run-locked', runLocked);
+    setSectionLock_(CONSENT_LOCK_SECTIONS, 'is-consent-locked', hasConsent_());
 
-    // The two selectors overlap on the score tables and the photo bar, and `inert` is one
-    // attribute. Read back off the classes so it answers to both locks rather than to
-    // whichever of them was applied second.
-    document.querySelectorAll(JUDGE_GATE_SECTIONS + ', ' + RUN_LOCK_SECTIONS).forEach((el) => {
-      const off = el.classList.contains('is-judge-locked') || el.classList.contains('is-run-locked');
+    // The three selectors overlap on the score tables, and `inert` is one attribute. Read
+    // back off the classes so it answers to all three locks rather than to whichever of
+    // them happened to be applied last.
+    const all = JUDGE_GATE_SECTIONS + ', ' + RUN_LOCK_SECTIONS + ', ' + CONSENT_LOCK_SECTIONS;
+    document.querySelectorAll(all).forEach((el) => {
+      const off = el.classList.contains('is-judge-locked')
+        || el.classList.contains('is-run-locked')
+        || el.classList.contains('is-consent-locked');
       // pointer-events in the stylesheet stops taps; this is what stops the keyboard and
       // takes the locked controls out of the accessibility tree with them.
       if (off) el.setAttribute('inert', '');
