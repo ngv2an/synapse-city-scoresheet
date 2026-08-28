@@ -95,9 +95,12 @@ const RESULT_COLUMNS = ['Rank', 'Team ID', 'Category']
 // Two preamble rows and a blank one, the same shape the Ranking tab uses and for the same
 // reason: a line each, so the hint and the link can both run as wide as they need without
 // either setting the width of column A.
-const RESULT_LABEL_ROW = 1;
-const RESULT_URL_ROW = 2;
-const RESULT_HEADER_ROW = 4;
+// Row 1 is the rebuild time on both tabs, so anyone asking how fresh a sheet is looks in
+// the same place whichever one they are on.
+const RESULT_UPDATED_ROW = 1;
+const RESULT_LABEL_ROW = 2;
+const RESULT_URL_ROW = 3;
+const RESULT_HEADER_ROW = 5;
 const RESULT_FIRST_DATA_ROW = RESULT_HEADER_ROW + 1;
 // A field label and the empty box under it, which is all this needs to be. Guidance written
 // out in sentences would sit on a sheet people print and hand round, and a rebuild writes it
@@ -1535,12 +1538,46 @@ function buildRankingSheet(sheetId) {
 
   // Last, so the stamp means "this tab was rebuilt" and not "a rebuild was attempted". A
   // step above throwing leaves the previous time standing, which is the true one.
-  writeRankingStamp_(sheet);
+  writeUpdatedStamp_(sheet, RANKING_UPDATED_ROW);
 
   // After the stamp, and deliberately: it is the Ranking tab the stamp speaks for, and a
   // Result tab that fails to build should not make a finished rebuild look unfinished.
-  buildResultSheet_(ss, sheet, levelTitle, teams.length);
+  const result = buildResultSheet_(ss, sheet, levelTitle, teams.length);
+  orderCompetitionTabs_(ss, scores, sheet, result);
   return sheet;
+}
+
+/**
+ * Config, Scores, Ranking, Result, in that order along the bottom of the window.
+ *
+ * The order a run travels: what was set up, what came in, what it came to, what gets handed
+ * out. Anything else in the file - a Team Data tab, a working copy - keeps its own order
+ * after these four, because this only ever pulls four tabs to the front.
+ *
+ * Checked before it is done. Once a file is in this order it stays that way, and reading
+ * the tab names costs one call where moving four tabs costs eight - on a rebuild that is
+ * already the slowest thing anyone clicks, every call that changes nothing is worth not
+ * making.
+ */
+function orderCompetitionTabs_(ss, scores, ranking, result) {
+  const wanted = [ss.getSheetByName(SHEET_NAME_CONFIG), scores, ranking, result]
+    .filter(function (sheet) { return !!sheet; });
+
+  const names = ss.getSheets().map(function (sheet) { return sheet.getName(); });
+  const settled = wanted.every(function (sheet, i) { return names[i] === sheet.getName(); });
+  if (settled) return;
+
+  // moveActiveSheet is the only way to place a tab, so each one has to be made active first.
+  // Whatever was active before goes back afterwards: this runs from a link, with nobody
+  // looking, and it should not decide which tab the next person to open the file lands on.
+  const before = ss.getActiveSheet();
+
+  wanted.forEach(function (sheet, i) {
+    ss.setActiveSheet(sheet);
+    ss.moveActiveSheet(i + 1);
+  });
+
+  if (before) ss.setActiveSheet(before);
 }
 
 /**
@@ -1620,6 +1657,9 @@ function buildResultSheet_(ss, ranking, levelTitle, rows) {
   // Ranking tab uses, and for the same reason: a link is a line to read, not a column width.
   sheet.autoResizeColumns(1, RESULT_COLUMNS.length);
 
+  // All three of these are written after the auto-fit above, for the reason that auto-fit
+  // measures every cell in a column and each of them is a line meant to run past its own.
+  writeUpdatedStamp_(sheet, RESULT_UPDATED_ROW);
   sheet.getRange(RESULT_LABEL_ROW, 1).setValue(RESULT_URL_LABEL).setFontWeight('bold');
 
   // Put back exactly as it was found. A URL that could not be used has already thrown by
@@ -1636,14 +1676,25 @@ function buildResultSheet_(ss, ranking, levelTitle, rows) {
 /**
  * The Team Data URL a person typed on this tab, or '' for none.
  *
- * Read before the rebuild wipes the tab, and only believed when it looks like a link. This
- * cell sat inside the table in the first version of this sheet, so on a tab built by that
- * version it holds a team's Rank - a number, not a link, and quietly ignored rather than
- * reported as a broken URL.
+ * Read before the rebuild wipes the tab, and only believed when it looks like a link. Every
+ * other thing that has sat in this stretch of column A - a team's Rank in the first version
+ * of this sheet, a label, a placeholder, the rebuild time - fails that test and is passed
+ * over rather than reported as a broken URL.
+ *
+ * Searched rather than read from one cell, because this field has already moved down a row
+ * once. A link somebody pasted is the one thing on the tab this script did not write, and
+ * rearranging the furniture above it must not be what deletes it.
  */
 function readTeamDataUrl_(sheet) {
-  const text = cellText_(sheet.getRange(RESULT_URL_ROW, 1).getValue());
-  return /^https?:\/\//i.test(text) ? text : '';
+  const rows = Math.min(RESULT_HEADER_ROW - 1, sheet.getMaxRows());
+  const above = sheet.getRange(1, 1, rows, 1).getValues();
+
+  for (let i = 0; i < above.length; i++) {
+    const text = cellText_(above[i][0]);
+    if (/^https?:\/\//i.test(text)) return text;
+  }
+
+  return '';
 }
 
 /**
@@ -1791,7 +1842,7 @@ function findTeamDataSheet_(ss) {
 }
 
 /**
- * When this tab was last rebuilt, on the link row beside the link.
+ * When a tab was last rebuilt, in column A of the row given.
  *
  * Text, and deliberately not a Date carrying the wording in its number format. Sheets only
  * spills TEXT into the empty cells beside it - a number or a date too wide for its column
@@ -1805,14 +1856,14 @@ function findTeamDataSheet_(ss) {
  * NOW() would be wrong for a different reason - it re-evaluates on every open and would
  * report a rebuild that never happened.
  */
-function writeRankingStamp_(sheet) {
+function writeUpdatedStamp_(sheet, row) {
   const when = Utilities.formatDate(
     new Date(), sheet.getParent().getSpreadsheetTimeZone(), RANKING_UPDATED_FORMAT
   );
 
   // Plain-text format first, so a tab rebuilt by the previous version - which left a date
   // format on this cell - does not try to read the string back as a date.
-  sheet.getRange(RANKING_UPDATED_ROW, 1)
+  sheet.getRange(row, 1)
     .setNumberFormat('@')
     .setValue(RANKING_UPDATED_LABEL + when)
     .setHorizontalAlignment('left')
