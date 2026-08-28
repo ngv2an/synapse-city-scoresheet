@@ -88,8 +88,11 @@ const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
 // The top five is read off Raw Score, the column the app actually produces. Normalized
 // Score beside it is derived from that same five, so ranking on it would be circular.
 const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
-// Raw Score over the Base Top Score above it: 1.000 is a run level with the average of the
-// round's top five, and everything else reads against that.
+// Raw Score over the Base Top Score above it, times this: 100 is a run level with the
+// average of the round's top five, and everything else reads against that. Two decimals
+// hold finer detail at this scale than three did at a scale of one.
+const RANKING_NORMALIZED_SCALE = 100;
+const RANKING_NORMALIZED_DIGITS = '0.00';
 const RANKING_NORMALIZED_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Normalized Score');
 // Column M, straight after Round 2 with no spacer: the better of a team's two normalized
 // runs. Two rounds measured against their own round's top five are on one scale by
@@ -1671,14 +1674,18 @@ function writeOverallColumn_(sheet, rows, sep) {
     formulas.push(['=IF(COUNT(' + pair + ')=0' + sep + '""' + sep + 'MAX(' + pair + '))']);
   }
 
+  // The same format as the columns it picks from: one number must not read two ways
+  // depending on which column it is sitting in.
   sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_OVERALL_COLUMN, rows, 1)
     .setFormulas(formulas)
-    .setNumberFormat('0.000');
+    .setNumberFormat(RANKING_NORMALIZED_DIGITS);
 }
 
 /**
  * Normalized Score, one formula per team row: this team's Raw Score over the Base Top Score
- * sitting in the header of the same column block.
+ * sitting in the header of the same column block, on a scale where the top five average is
+ * 100 rather than 1. The same ranking either way - it is one constant factor - so this is
+ * about reading two-digit differences off the column without counting leading zeros.
  *
  * A formula and not a number, because Raw Score gets corrected by hand between rebuilds and
  * a stored ratio would go on describing the score it replaced. It also means the whole
@@ -1697,12 +1704,12 @@ function writeNormalizedColumn_(sheet, roundColumn, rows, sep) {
   for (let i = 0; i < rows; i++) {
     const cell = raw + (RANKING_FIRST_DATA_ROW + i);
     formulas.push(['=IF(' + cell + '=""' + sep + '""' + sep
-      + 'IFERROR(' + cell + '/' + base + sep + '""))']);
+      + 'IFERROR(' + RANKING_NORMALIZED_SCALE + '*' + cell + '/' + base + sep + '""))']);
   }
 
   sheet.getRange(RANKING_FIRST_DATA_ROW, column, rows, 1)
     .setFormulas(formulas)
-    .setNumberFormat('0.000');
+    .setNumberFormat(RANKING_NORMALIZED_DIGITS);
 }
 
 /**
