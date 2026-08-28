@@ -58,8 +58,9 @@ const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
 
 /**
  * Ranking layout: Team ID, then five columns for Round 1, one blank column, the same five
- * for Round 2, and one column of Overall Result on the end. A link row on top, then two
- * header rows, the upper one naming the three blocks.
+ * for Round 2, and two columns of Overall Result on the end. A link row on top, then two
+ * header rows, the upper one naming the three blocks - and, as in the round blocks, naming
+ * each one only on the column it starts at.
  *
  * The link row exists because a rebuild is a manual act and the standings are where people
  * notice they are stale. Putting the rebuild where they are already looking beats asking
@@ -100,6 +101,13 @@ const RANKING_NORMALIZED_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Normalized Scor
 const RANKING_OVERALL_COLUMN = RANKING_ROUND2_COLUMN + RANKING_ROUND_COLUMNS.length;
 const RANKING_OVERALL_GROUP = 'Overall Result';
 const RANKING_OVERALL_LABEL = 'Best Score';
+// Column N, the second half of that block: how far apart the team's two rounds were. Low is
+// steady, which is the opposite direction to every other number on this tab, so the header
+// carries a note saying so.
+const RANKING_CONSISTENCY_COLUMN = RANKING_OVERALL_COLUMN + 1;
+const RANKING_CONSISTENCY_LABEL = 'Consistency';
+const RANKING_CONSISTENCY_NOTE = 'Consistency: the gap between the two Normalized Scores. '
+  + 'Lower is steadier. Blank until the team has run both rounds.';
 const RANKING_TOP_COUNT = 5;
 const RANKING_TOP_BACKGROUND = '#e6f4ea';
 // Base Top Score: the mean of those top five, in the header cell above the column they are
@@ -1588,7 +1596,7 @@ function writeRankingLink_(sheet, sheetId) {
 }
 
 function writeRankingHeaders_(sheet) {
-  const width = RANKING_OVERALL_COLUMN;
+  const width = RANKING_CONSISTENCY_COLUMN;
   if (sheet.getMaxColumns() < width) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
   }
@@ -1605,12 +1613,16 @@ function writeRankingHeaders_(sheet) {
     labels[RANKING_ROUND2_COLUMN - 1 + i] = label;
   });
   labels[RANKING_OVERALL_COLUMN - 1] = RANKING_OVERALL_LABEL;
+  labels[RANKING_CONSISTENCY_COLUMN - 1] = RANKING_CONSISTENCY_LABEL;
 
   sheet.getRange(RANKING_GROUP_ROW, 1, 2, width).setValues([group, labels]).setFontWeight('bold');
+  sheet.getRange(RANKING_HEADER_ROW, RANKING_CONSISTENCY_COLUMN)
+    .setNote(RANKING_CONSISTENCY_NOTE);
   sheet.setFrozenRows(RANKING_HEADER_ROW);
   sheet.setColumnWidth(1, 110);
   sheet.setColumnWidth(RANKING_SPACER_COLUMN, 24);
   sheet.setColumnWidth(RANKING_OVERALL_COLUMN, 100);
+  sheet.setColumnWidth(RANKING_CONSISTENCY_COLUMN, 100);
 }
 
 function writeRankingRows_(sheet, teams, runs, sep) {
@@ -1624,7 +1636,7 @@ function writeRankingRows_(sheet, teams, runs, sep) {
   // when that column held a formula nobody here had written; it holds one written below now.
   if (height > 0) {
     sheet.getRange(RANKING_FIRST_DATA_ROW, 1, height, 1).clearContent();
-    sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_OVERALL_COLUMN, height, 1).clearContent();
+    sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_OVERALL_COLUMN, height, 2).clearContent();
     [RANKING_ROUND1_COLUMN, RANKING_ROUND2_COLUMN].forEach(function (column) {
       sheet.getRange(RANKING_FIRST_DATA_ROW, column, height, RANKING_ROUND_COLUMNS.length)
         .clearContent();
@@ -1650,34 +1662,48 @@ function writeRankingRows_(sheet, teams, runs, sep) {
     writeNormalizedColumn_(sheet, round[1], teams.length, sep);
   });
 
-  writeOverallColumn_(sheet, teams.length, sep);
+  writeOverallColumns_(sheet, teams.length, sep);
 }
 
 /**
- * Best Score: the better of a team's two Normalized Scores.
+ * The two Overall Result columns, both read off the same pair of Normalized Scores.
  *
- * Comparable across rounds because each side of it is already a ratio against its own
- * round's top five, so a hard Round 2 does not quietly outrank an easy Round 1.
+ * Best Score is the better of the two. Consistency is how far apart they were - the same
+ * pair, asked how steady rather than how high.
  *
- * COUNT is what tells "no runs at all" apart from "a run worth zero" - MAX over two empty
- * cells is 0, and a team that never went out has no best score rather than the worst one.
- * A team that ran only one round is compared on that one, which MAX gives for free.
+ * Both are comparable across rounds because each side is already a ratio against its own
+ * round's top five, so a hard Round 2 does not quietly outrank an easy Round 1, and a gap
+ * between the rounds means the team moved rather than the course.
+ *
+ * The two COUNT guards differ on purpose, and that is the whole design here. Best Score
+ * needs one run: a team that ran only Round 1 is judged on Round 1, which MAX gives for
+ * free, and only a team that never went out has no best score - =0 rather than an empty
+ * MAX, which would read 0 and rank them below the worst real run. Consistency needs both:
+ * with one round missing ABS would return that round's own score, and a team that has run
+ * once would show up as wildly inconsistent for no reason but the schedule. So =2, and
+ * blank until the second run lands.
  */
-function writeOverallColumn_(sheet, rows, sep) {
+function writeOverallColumns_(sheet, rows, sep) {
   const first = columnLetter_(RANKING_ROUND1_COLUMN + RANKING_NORMALIZED_OFFSET);
   const second = columnLetter_(RANKING_ROUND2_COLUMN + RANKING_NORMALIZED_OFFSET);
 
-  const formulas = [];
+  const best = [];
+  const gap = [];
   for (let i = 0; i < rows; i++) {
     const row = RANKING_FIRST_DATA_ROW + i;
     const pair = first + row + sep + second + row;
-    formulas.push(['=IF(COUNT(' + pair + ')=0' + sep + '""' + sep + 'MAX(' + pair + '))']);
+    best.push(['=IF(COUNT(' + pair + ')=0' + sep + '""' + sep + 'MAX(' + pair + '))']);
+    gap.push(['=IF(COUNT(' + pair + ')=2' + sep
+      + 'ABS(' + first + row + '-' + second + row + ')' + sep + '"")']);
   }
 
-  // The same format as the columns it picks from: one number must not read two ways
+  // The same format as the columns they are read from: one number must not read two ways
   // depending on which column it is sitting in.
   sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_OVERALL_COLUMN, rows, 1)
-    .setFormulas(formulas)
+    .setFormulas(best)
+    .setNumberFormat(RANKING_NORMALIZED_DIGITS);
+  sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_CONSISTENCY_COLUMN, rows, 1)
+    .setFormulas(gap)
     .setNumberFormat(RANKING_NORMALIZED_DIGITS);
 }
 
