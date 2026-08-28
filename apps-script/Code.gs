@@ -63,7 +63,8 @@ const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
  *
  * The link row exists because a rebuild is a manual act and the standings are where people
  * notice they are stale. Putting the rebuild where they are already looking beats asking
- * them to find the script editor.
+ * them to find the script editor. The same row says when the rebuild last ran, which is the
+ * question that makes anyone reach for the link in the first place.
  *
  * Every column of the block is written by a rebuild now, Normalized Score included. It was
  * left alone for as long as nothing here defined what normalising meant; Base Top Score
@@ -73,10 +74,15 @@ const RANKING_SHEET_PREFIX = 'Ranking - ';
 const RANKING_ROUND_COLUMNS = ['Submission', 'Raw Score', 'Normalized Score', 'Time', 'Try'];
 const RANKING_LINK_ROW = 1;
 const RANKING_LINK_LABEL = 'Click here to update Ranking';
+// The label lives in the number format, not in the text, so the cell can hold a real Date.
+const RANKING_UPDATED_FORMAT = '"Last Updated at "hh:mm:ss dd/mm/yyyy';
 const RANKING_GROUP_ROW = RANKING_LINK_ROW + 1;
 const RANKING_HEADER_ROW = RANKING_GROUP_ROW + 1;
 const RANKING_FIRST_DATA_ROW = RANKING_HEADER_ROW + 1;
 const RANKING_ROUND1_COLUMN = 2;
+// Column D, two clear columns after the link. A is 110px and the label is wider than that,
+// so B and C are the room it spills into; anything written there would clip it instead.
+const RANKING_UPDATED_COLUMN = RANKING_ROUND1_COLUMN + 2;
 const RANKING_SPACER_COLUMN = RANKING_ROUND1_COLUMN + RANKING_ROUND_COLUMNS.length;
 const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
 // The top five is read off Raw Score, the column the app actually produces. Normalized
@@ -1396,7 +1402,27 @@ function buildRankingSheet(sheetId) {
 
   writeRankingRows_(sheet, teams, runs, sep);
   applyTopScores_(sheet, sep);
+
+  // Last, so the stamp means "this tab was rebuilt" and not "a rebuild was attempted". A
+  // step above throwing leaves the previous time standing, which is the true one.
+  writeRankingStamp_(sheet);
   return sheet;
+}
+
+/**
+ * When this tab was last rebuilt, on the link row beside the link.
+ *
+ * A Date with the wording folded into the number format rather than a preformatted string:
+ * the cell keeps the real moment, and Sheets renders it in the file's own timezone instead
+ * of the script's. NOW() would be wrong here for the opposite reason - it re-evaluates on
+ * every open and would report a rebuild that never happened.
+ */
+function writeRankingStamp_(sheet) {
+  sheet.getRange(RANKING_LINK_ROW, RANKING_UPDATED_COLUMN)
+    .setValue(new Date())
+    .setNumberFormat(RANKING_UPDATED_FORMAT)
+    .setFontColor('#5f6368')
+    .setFontStyle('italic');
 }
 
 /** Column number to letter: a custom formula is handed to Sheets as text, not as a Range. */
