@@ -913,10 +913,25 @@ body {
   justify-content: center;
 }
 
+/* Two lines inside the button, so .btn-action's row direction is overridden here. The task
+   on top, the condition on it below - one thing to do, not two. */
 .btn-photo {
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 16px;
+  max-width: 100%;
+  line-height: 1.25;
   border: 1px solid #008000;
   background: #ffffff;
   color: #004700;
+}
+
+/* Smaller and lighter, and inheriting the colour above so the whole button dims as one when
+   the tickbox has not been ticked. */
+.btn-photo-note {
+  font-size: 11.5px;
+  font-weight: 600;
+  opacity: 0.8;
 }
 
 .btn-photo:active {
