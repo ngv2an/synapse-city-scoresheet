@@ -92,6 +92,21 @@ const RESULT_TEAM_DATA_COLUMNS = ['State', 'Code', 'School', 'Stu1', 'Stu2', 'St
 const RESULT_COLUMNS = ['Rank', 'Team ID', 'Category']
   .concat(RESULT_TEAM_DATA_COLUMNS)
   .concat(['Best Score', 'Variation', 'Try', 'Time']);
+// Two preamble rows and a blank one, the same shape the Ranking tab uses and for the same
+// reason: a line each, so the hint and the link can both run as wide as they need without
+// either setting the width of column A.
+const RESULT_LABEL_ROW = 1;
+const RESULT_URL_ROW = 2;
+const RESULT_HEADER_ROW = 4;
+const RESULT_FIRST_DATA_ROW = RESULT_HEADER_ROW + 1;
+// A field label and the empty box under it, which is all this needs to be. Guidance written
+// out in sentences would sit on a sheet people print and hand round, and a rebuild writes it
+// back, so deleting it does not even work.
+//
+// The placeholder is what says which cell to use. It is not a URL, so readTeamDataUrl_
+// passes over it exactly as it passes over an empty cell.
+const RESULT_URL_LABEL = 'Team Data URL';
+const RESULT_URL_PLACEHOLDER = 'Paste link here';
 // Named, because the offset below is found by looking this exact string up in the list. A
 // rename that touched only one of the two would leave indexOf at -1, and -1 does not throw:
 // it quietly writes the column one to the left of Raw Score.
@@ -1543,16 +1558,20 @@ function buildResultSheet_(ss, ranking, levelTitle, rows) {
   const name = RESULT_SHEET_PREFIX + levelTitle;
   const sheet = ss.getSheetByName(name) || ss.insertSheet(name);
 
-  // Wholesale, every rebuild. Nothing on this tab is not written in the lines below, and a
-  // clear is the only thing that makes a column which has stopped being written stop being
-  // shown - notes included, which clear() does not take.
+  // Before the clear, and this is the only thing on the tab that has to survive one. It is
+  // typed by a person and belongs to them; everything else here this script wrote itself.
+  const url = readTeamDataUrl_(sheet);
+
+  // Wholesale, every rebuild. Nothing else on this tab is not written in the lines below,
+  // and a clear is the only thing that makes a column which has stopped being written stop
+  // being shown - notes included, which clear() does not take.
   sheet.clear();
   sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).clearNote();
 
-  sheet.getRange(1, 1, 1, RESULT_COLUMNS.length)
+  sheet.getRange(RESULT_HEADER_ROW, 1, 1, RESULT_COLUMNS.length)
     .setValues([RESULT_COLUMNS])
     .setFontWeight('bold');
-  sheet.setFrozenRows(1);
+  sheet.setFrozenRows(RESULT_HEADER_ROW);
 
   if (rows) {
     // The Ranking tab was written by this same execution and half of it is formulas, so
@@ -1562,7 +1581,7 @@ function buildResultSheet_(ss, ranking, levelTitle, rows) {
     const standings = ranking
       .getRange(RANKING_FIRST_DATA_ROW, 1, rows, RANKING_OVERALL_END)
       .getValues();
-    const details = readTeamData_(ss, levelTitle);
+    const details = readTeamData_(resolveTeamDataSheet_(ss, url), levelTitle);
     const blank = RESULT_TEAM_DATA_COLUMNS.map(function () { return ''; });
 
     const values = standings.map(function (row) {
@@ -1581,24 +1600,100 @@ function buildResultSheet_(ss, ranking, levelTitle, rows) {
     // Text format before the values, not after. A Code of "007" written into a General cell
     // is the number 7 by the time any format could rescue it.
     ['Team ID'].concat(RESULT_TEAM_DATA_COLUMNS).concat(['Time']).forEach(function (label) {
-      sheet.getRange(2, resultColumn_(label), rows, 1).setNumberFormat('@');
+      sheet.getRange(RESULT_FIRST_DATA_ROW, resultColumn_(label), rows, 1)
+        .setNumberFormat('@');
     });
 
-    sheet.getRange(2, 1, rows, RESULT_COLUMNS.length).setValues(values);
+    sheet.getRange(RESULT_FIRST_DATA_ROW, 1, rows, RESULT_COLUMNS.length).setValues(values);
 
-    sheet.getRange(2, resultColumn_('Rank'), rows, 1)
+    sheet.getRange(RESULT_FIRST_DATA_ROW, resultColumn_('Rank'), rows, 1)
       .setNumberFormat(RANKING_INTEGER_DIGITS);
-    sheet.getRange(2, resultColumn_('Try'), rows, 1)
+    sheet.getRange(RESULT_FIRST_DATA_ROW, resultColumn_('Try'), rows, 1)
       .setNumberFormat(RANKING_INTEGER_DIGITS);
     ['Best Score', 'Variation'].forEach(function (label) {
-      sheet.getRange(2, resultColumn_(label), rows, 1)
+      sheet.getRange(RESULT_FIRST_DATA_ROW, resultColumn_(label), rows, 1)
         .setNumberFormat(RANKING_NORMALIZED_DIGITS);
     });
   }
 
-  // Nothing on this tab spills, so every column can simply fit what is in it.
+  // Sized against the table, with the two preamble rows still empty - the same order the
+  // Ranking tab uses, and for the same reason: a link is a line to read, not a column width.
   sheet.autoResizeColumns(1, RESULT_COLUMNS.length);
+
+  sheet.getRange(RESULT_LABEL_ROW, 1).setValue(RESULT_URL_LABEL).setFontWeight('bold');
+
+  // Put back exactly as it was found. A URL that could not be used has already thrown by
+  // now, so anything reaching here is either working or deliberately blank - and blank
+  // shows the placeholder again rather than an empty cell nobody would think to fill.
+  sheet.getRange(RESULT_URL_ROW, 1)
+    .setNumberFormat('@')
+    .setValue(url || RESULT_URL_PLACEHOLDER)
+    .setFontColor(url ? null : '#9aa0a6')
+    .setFontStyle(url ? 'normal' : 'italic');
   return sheet;
+}
+
+/**
+ * The Team Data URL a person typed on this tab, or '' for none.
+ *
+ * Read before the rebuild wipes the tab, and only believed when it looks like a link. This
+ * cell sat inside the table in the first version of this sheet, so on a tab built by that
+ * version it holds a team's Rank - a number, not a link, and quietly ignored rather than
+ * reported as a broken URL.
+ */
+function readTeamDataUrl_(sheet) {
+  const text = cellText_(sheet.getRange(RESULT_URL_ROW, 1).getValue());
+  return /^https?:\/\//i.test(text) ? text : '';
+}
+
+/**
+ * The tab holding Team Data: the one a URL names, or the one in this file.
+ *
+ * Two different silences on purpose. No URL means nobody has asked for anything, so a
+ * missing "Team Data" tab is simply a file without one and the roster columns come out
+ * blank. A URL that cannot be used is the opposite - somebody stated where the data is and
+ * the statement is false - and that throws, naming what it could not do. The Result tab is
+ * built after the Ranking tab is finished and stamped, so nothing already earned is lost.
+ *
+ * gid is what makes any tab reachable, not just one named "Team Data". A link without one -
+ * someone copied the address bar before clicking the tab - falls back to the name.
+ */
+function resolveTeamDataSheet_(ss, url) {
+  if (!url) return findTeamDataSheet_(ss);
+
+  const id = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/.exec(url);
+  if (!id) throw new Error('Team Data URL is not a Google Sheets link: ' + url);
+
+  let book;
+  try {
+    book = SpreadsheetApp.openById(id[1]);
+  } catch (err) {
+    throw new Error('Team Data URL could not be opened - check the link and that this '
+      + 'account may read that file: ' + url);
+  }
+
+  // Tested for a match, not for truth: gid=0 is the first tab of every file and is a
+  // perfectly good answer that reads as false.
+  const gid = /[#?&]gid=(\d+)/.exec(url);
+  if (!gid) {
+    const named = findTeamDataSheet_(book);
+    if (named) return named;
+
+    throw new Error('Team Data URL names no tab (no gid) and "' + book.getName()
+      + '" has no "' + RESULT_TEAM_DATA_SHEET + '" tab.');
+  }
+
+  const wanted = Number(gid[1]);
+  const found = book.getSheets().filter(function (tab) {
+    return tab.getSheetId() === wanted;
+  })[0];
+
+  if (!found) {
+    throw new Error('Team Data URL points at gid ' + wanted + ', which "' + book.getName()
+      + '" has no tab for.');
+  }
+
+  return found;
 }
 
 /** A column of the Result tab, by name. Loud for the same reason overallColumn_ is. */
@@ -1623,7 +1718,8 @@ function teamKey_(value) {
  * Optional at every step. No tab, no Team ID column on it, or a column named something this
  * does not recognise, and those cells come out blank. That tab is kept by hand and is not
  * what the competition runs on; refusing to publish a result because a school name is
- * missing would be the wrong trade during an event.
+ * missing would be the wrong trade during an event. Which tab this is was settled by
+ * resolveTeamDataSheet_, which is where a URL that names nothing real is reported.
  *
  * Headers and the tab name are matched without regard to case or spacing, for the same
  * reason: they are typed by a person, not written by this script - "TEAM ID" and "Team ID"
@@ -1634,8 +1730,7 @@ function teamKey_(value) {
  * a fallback, so a Category column spelt in some way this cannot read narrows nothing and
  * the join is never worse than matching on Team ID alone.
  */
-function readTeamData_(ss, levelTitle) {
-  const sheet = findTeamDataSheet_(ss);
+function readTeamData_(sheet, levelTitle) {
   if (!sheet) return {};
 
   const data = sheet.getDataRange().getValues();
