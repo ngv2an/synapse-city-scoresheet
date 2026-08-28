@@ -87,11 +87,14 @@ const RANKING_ROUND_COLUMNS = [
   'Submission', 'Raw Score', RANKING_NORMALIZED_LABEL, 'Time', 'Try'
 ];
 const RANKING_OVERALL_GROUP = 'Overall Result';
-// Left to right: where the team placed, which round got them there, and what that round
-// was. Time and Try lose their "of Best Round" suffix here because the two columns beside
-// them already say it - inside this block there is no other round to mean.
+// Rank, then which round earned it, then rulebook 10.3 in its own order: Best Score, then
+// Variation, then Try, then Time. Reading left to right is reading the tiebreak - where two
+// teams draw level, the next column along is the one that separated them.
+//
+// Try and Time lose their "of Best Round" suffix here because Best Round is sitting two
+// columns to the left; inside this block there is no other round to mean.
 const RANKING_OVERALL_COLUMNS = [
-  'Rank', 'Best Round', 'Best Score', 'Variation', 'Time', 'Try'
+  'Rank', 'Best Round', 'Best Score', 'Variation', 'Try', 'Time'
 ];
 const RANKING_LINK_LABEL = 'Click here to update Ranking';
 const RANKING_UPDATED_LABEL = 'Last Updated at ';
