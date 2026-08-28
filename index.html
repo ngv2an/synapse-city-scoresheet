@@ -122,41 +122,52 @@
       </table>
     </section>
 
-    <!-- Photo control stays below the two scoring tables. -->
-    <section class="score-action-bar" aria-label="Photo + Consent">
-      <!-- Rulebook 10.4: the team agrees the result, and it is final once agreed. Above the
-           button because that is the order it happens in - agree, then photograph and send.
-           The team's own ID is written into the label by renderConsentLabel_. -->
-      <label class="consent-row" for="consent-check">
-        <input type="checkbox" id="consent-check">
-        <span id="consent-label">Result Agreed by Team</span>
-      </label>
-      <button class="btn-action btn-photo" id="btn-photo" title="Photo + Consent">Photo + Consent</button>
-    </section>
-
     <!-- Hidden Camera / File Input -->
     <input type="file" id="photo-input" accept="image/*" capture="environment" style="display: none;">
 
-    <!-- Photo Preview Container (Below 2 Tables) -->
-    <section class="photo-preview-container" id="photo-container" style="display: none;">
-      <div class="photo-card">
-        <div class="photo-header">
-          <span class="photo-title">Mission Photo</span>
-          <span class="photo-meta" id="photo-meta"></span>
-          <button type="button" class="btn-remove-photo" id="btn-remove-photo" title="Remove photo">&times;</button>
-        </div>
-        <div class="photo-img-wrap">
-          <img id="photo-preview" src="" alt="Mission Photo">
-        </div>
-      </div>
-    </section>
+    <!--
+      Agree, photograph, send: one panel, because it is one step. They also gate each other -
+      nothing here is reachable until the tickbox at the top is ticked - and three controls
+      that answer to one another read badly as three separate cards.
 
-    <!-- Submit to Google Sheet -->
-    <section class="submit-section">
+      The three inner sections keep their own classes. Each is named by a different lock in
+      script.js and they are deliberately not the same set: the consent lock leaves this
+      whole panel alone so the tickbox can be untucked, while a sent run freezes the top of
+      it and leaves Submit reporting the outcome.
+    -->
+    <section class="run-actions" aria-label="Agree, photo and submit">
+      <!-- Rulebook 10.4: the team agrees the result, and it is final once agreed. Above the
+           button because that is the order it happens in - agree, then photograph and send.
+           The team's own ID is written into the label by renderConsentLabel_. -->
+      <section class="score-action-bar" aria-label="Photo + Consent">
+        <label class="consent-row" for="consent-check">
+          <input type="checkbox" id="consent-check">
+          <span id="consent-label">Result Agreed by Team</span>
+        </label>
+        <button class="btn-action btn-photo" id="btn-photo" title="Photo + Consent">Photo + Consent</button>
+      </section>
+
+      <!-- Kept between the two buttons, where it has always been: a photo taken and then
+           shown below the Submit button would read as something that happened afterwards. -->
+      <section class="photo-preview-container" id="photo-container" style="display: none;">
+        <div class="photo-card">
+          <div class="photo-header">
+            <span class="photo-title">Mission Photo</span>
+            <span class="photo-meta" id="photo-meta"></span>
+            <button type="button" class="btn-remove-photo" id="btn-remove-photo" title="Remove photo">&times;</button>
+          </div>
+          <div class="photo-img-wrap">
+            <img id="photo-preview" src="" alt="Mission Photo">
+          </div>
+        </div>
+      </section>
+
       <!-- Label and colour are both set by script.js: this button is the only report on a
            send, so it says Submitting / Submitted / Failed to Submit in place of a modal. -->
-      <button type="button" class="btn-submit" id="btn-submit">Submit</button>
-      <p class="submit-status" id="submit-status" role="status" aria-live="polite"></p>
+      <section class="submit-section">
+        <button type="button" class="btn-submit" id="btn-submit">Submit</button>
+        <p class="submit-status" id="submit-status" role="status" aria-live="polite"></p>
+      </section>
     </section>
 
     <!-- Footer Logo & Device Info -->

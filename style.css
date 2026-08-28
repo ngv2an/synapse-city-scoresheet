@@ -817,6 +817,28 @@ body {
   width: 100%;
 }
 
+/* Agree, photograph, send: one panel. The card border is what says these three belong to
+   each other - which matters here more than elsewhere, because the first of them is what
+   turns on the other two. Same chrome as .entry-panel, so the page keeps one card. */
+.run-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #cfd7e2;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(21, 33, 47, 0.08);
+}
+
+/* The photo already sits on a card of its own; inside this one it does not need a second
+   shadow under it as well. */
+.run-actions .photo-card {
+  box-shadow: none;
+}
+
 /* Photo waits on the tickbox above it. Dimmed rather than hidden, so what is waiting and
    what it is waiting for are both on screen at once. */
 .btn-action:disabled {
