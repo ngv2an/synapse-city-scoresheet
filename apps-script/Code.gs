@@ -92,8 +92,8 @@ const RANKING_ROUND2_COLUMN = RANKING_SPACER_COLUMN + 1;
 // meaning.
 const RANKING_INVALID_COLUMN = RANKING_ROUND2_COLUMN;
 const RANKING_INVALID_NOTE = 'A submission is ranked only if it landed on the Competition '
-  + 'Date and inside its own round: Round 1 Time to Round 2 Time, Round 2 Time to End Time. '
-  + 'Both ends count as inside. A bound left blank in Config is not checked at all.';
+  + 'Date, between Round 1 Time and End Time. Both ends count as inside. A bound left blank '
+  + 'in Config is not checked at all.';
 // The top five is read off Raw Score, the column the app actually produces. Normalized
 // Score beside it is derived from that same five, so ranking on it would be circular.
 const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
@@ -1582,7 +1582,7 @@ function readLatestRuns_(sheet, config, zone) {
     // schedule quietly stands down rather than voiding every row on the tab.
     if (stampAt !== -1) {
       tally.checked += 1;
-      if (!onSchedule_(when, round, schedule, zone)) {
+      if (!onSchedule_(when, schedule, zone)) {
         tally.invalid += 1;
         continue;
       }
@@ -1606,35 +1606,37 @@ function readLatestRuns_(sheet, config, zone) {
 }
 
 /**
- * Config's schedule reduced to what a submission can be measured against: one day, and one
- * open window per round.
+ * Config's schedule reduced to what a submission can be measured against: the competition
+ * day, and the one window the whole event runs inside.
+ *
+ * One window, not one per round, and Round 2 Time takes no part in it. A per-round window
+ * assumes a judge submits while the round is still running, and they do not - scores go in
+ * late, or in a batch once the round is over. Round 1 submissions arriving after Round 2
+ * opened would then all be void, which empties the Round 1 block and takes Normalized
+ * Score, Consistency and both Best Round columns down with it. This check exists to catch a
+ * stray run from another day or a test fired at midnight, and that is all it should do.
  *
  * Anything Config does not say - or says in a way this cannot read - comes back null, and
- * the check it would have driven is simply not made. That direction is the whole point. The
- * Config tab is edited by hand while the event runs, and a blank End Time voiding every
- * Round 2 run would be a far worse failure than not checking one.
+ * the check it would have driven is simply not made. The Config tab is edited by hand while
+ * the event runs, and a blank End Time voiding the whole tab would be a far worse failure
+ * than not checking one bound.
  */
 function rankingSchedule_(config) {
-  const round1 = parseConfigClock_(findRoundTime_(config.rounds, 1));
-  const round2 = parseConfigClock_(findRoundTime_(config.rounds, 2));
-  const end = parseConfigClock_(config.endTime);
-
   return {
     day: parseConfigDay_(config.competitionDate),
-    // Round 1 closes when Round 2 opens; Round 2 closes at the end. With no Round 2 Time,
-    // Round 1 runs to the end of the day instead - one round, rather than none.
-    windows: { '1': [round1, round2 === null ? end : round2], '2': [round2, end] }
+    open: parseConfigClock_(findRoundTime_(config.rounds, 1)),
+    close: parseConfigClock_(config.endTime)
   };
 }
 
 /**
  * Whether one submission is allowed to count.
  *
- * Both ends of a window are inside it. The round is not being worked out here - the judge
- * already declared it - so a run sent at the exact minute Round 2 opens needs no tie-break,
- * and being lenient at a boundary costs less than dropping a real score.
+ * The round it belongs to does not come into it: which round a run was is the judge's
+ * declaration, not something to be inferred from the clock. Both ends of the window are
+ * inside it, because being lenient at a boundary costs less than dropping a real score.
  */
-function onSchedule_(when, round, schedule, zone) {
+function onSchedule_(when, schedule, zone) {
   if (Object.prototype.toString.call(when) !== '[object Date]') return false;
 
   // A time-only cell in Sheets sits on 1899-12-30 and carries no date worth comparing.
@@ -1646,11 +1648,9 @@ function onSchedule_(when, round, schedule, zone) {
   // Read through the file's timezone, the same one the date was read through. getHours()
   // would answer in the script's zone, and the two need not be the same zone.
   const at = parseConfigClock_(Utilities.formatDate(when, zone, 'HH:mm:ss'));
-  // A round Config says nothing about - a stray Round 3 - is left exactly as it was found.
-  const window = schedule.windows[round] || [null, null];
 
-  if (window[0] !== null && at < window[0]) return false;
-  if (window[1] !== null && at > window[1]) return false;
+  if (schedule.open !== null && at < schedule.open) return false;
+  if (schedule.close !== null && at > schedule.close) return false;
   return true;
 }
 
