@@ -63,7 +63,7 @@ const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
  *   3  (blank, and the tab's one guaranteed-empty cell)
  *   4  group row:   Overall Result | Round 1 | Round 2
  *   5  header row:  Team ID, then each block's own column names
- *   6+ one row per team, in Config order
+ *   6+ one row per team, best placed first
  *
  * Each of the first two rows carries one thing, in column A, with the whole width to spill
  * across. They used to share row 1 and had to be spaced apart by hand so neither clipped
@@ -157,6 +157,13 @@ const RANKING_BEST_TRY_COLUMN = overallColumn_('Try');
 // time and the better try picked separately, which would describe a run nobody made.
 const RANKING_TIME_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Time');
 const RANKING_TRY_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Try');
+// Whole numbers, all three of them: a count of submissions, a score summed from missions
+// that are worth whole points each, and a count of tries. Named and set outright, because a
+// column nobody formats keeps the format some earlier layout left on it.
+const RANKING_INTEGER_DIGITS = '0';
+const RANKING_INTEGER_OFFSETS = [
+  RANKING_ROUND_COLUMNS.indexOf('Submission'), RANKING_SCORE_OFFSET, RANKING_TRY_OFFSET
+];
 const RANKING_TOP_COUNT = 5;
 const RANKING_TOP_BACKGROUND = '#e6f4ea';
 // Base Top Score: the mean of those top five, written into the group row directly above the
@@ -1462,8 +1469,9 @@ function buildRankingSheet(sheetId) {
   // submissions are allowed to count at all.
   const config = readConfig_(ss);
   const tally = readLatestRuns_(scores, config, ss.getSpreadsheetTimeZone());
-  // Exactly the Config list, in Config order. The ranking is the roster, so a team with no
-  // run yet still gets its row and nothing outside Config gets one at all.
+  // Exactly the Config list, no more and no less. The ranking is the roster, so a team with
+  // no run yet still gets its row and nothing outside Config gets one at all. The order the
+  // rows end up in is decided further down, by the standings.
   const teams = config.teams;
   const name = RANKING_SHEET_PREFIX + levelTitle;
   const sheet = ss.getSheetByName(name) || ss.insertSheet(name);
@@ -1476,10 +1484,18 @@ function buildRankingSheet(sheetId) {
   // guaranteed to have nothing to put back.
   const sep = argumentSeparator_(sheet.getRange(RANKING_BLANK_ROW, 1));
 
+  // Written twice, and that is the design. The standings decide the row order, the standings
+  // are formulas, and a formula's answer is not knowable until Sheets has evaluated it - so
+  // the first pass exists to be read back, and the second puts the same rows down in the
+  // order that read produced. Working the placings out in JavaScript instead would avoid the
+  // second pass at the price of a second definition of Normalized, and those two would drift.
   writeRankingRows_(sheet, teams, tally.runs, sep);
   applyTopScores_(sheet, sep);
-  // After both, because it reads back what they worked out rather than working it out again.
-  writeRankColumn_(sheet, teams.length);
+
+  const order = rankRankingRows_(sheet, teams.length);
+  writeRankingRows_(sheet, order.map(function (entry) { return teams[entry.at]; }),
+    tally.runs, sep);
+  writeRankPlaces_(sheet, order);
 
   // The table is complete and rows 1 and 2 are still empty, which is the one moment the
   // columns can be measured against the table alone.
@@ -1651,10 +1667,23 @@ function readLatestRuns_(sheet, config, zone) {
     entry.order = r;
     entry.score = scoreAt === -1 ? '' : Number(data[r][scoreAt]) || 0;
     entry.mission = missionAt === -1 ? '' : cellText_(data[r][missionAt]);
-    entry.tries = tryAt === -1 ? '' : cellText_(data[r][tryAt]);
+    entry.tries = tryCount_(tryAt === -1 ? '' : data[r][tryAt]);
   }
 
   return tally;
+}
+
+/**
+ * A try count as a number.
+ *
+ * Mission Time beside it stays text - "1:23.45" is not a number and must not become one -
+ * but Try is a count, and left as text it sits left-aligned beside the numbers and ignores
+ * the integer format on its column. Anything that will not read as a number is handed back
+ * untouched rather than turned into a 0 that looks like a real answer.
+ */
+function tryCount_(value) {
+  const text = cellText_(value);
+  return text !== '' && isFinite(Number(text)) ? Number(text) : text;
 }
 
 /**
@@ -1926,6 +1955,13 @@ function writeRankingRows_(sheet, teams, runs, sep) {
     sheet.getRange(RANKING_FIRST_DATA_ROW, round[1] + 3, teams.length, 2)
       .setValues(cells.map(function (c) { return [c[2], c[3]]; }));
 
+    // Time is deliberately not among these: it is the judge's own "1:23.45" and a number
+    // format is how that turns into something else.
+    RANKING_INTEGER_OFFSETS.forEach(function (offset) {
+      sheet.getRange(RANKING_FIRST_DATA_ROW, round[1] + offset, teams.length, 1)
+        .setNumberFormat(RANKING_INTEGER_DIGITS);
+    });
+
     writeNormalizedColumn_(sheet, round[1], teams.length, sep);
   });
 
@@ -1938,7 +1974,8 @@ function writeRankingRows_(sheet, teams, runs, sep) {
  * Best Score is the better of the two. Variation is how far apart they were - the same
  * pair, asked how steady rather than how high. Best Round names the round that won, and
  * Time and Try are lifted off it, so the block describes one actual run of one team. Rank
- * is not here - it needs all six of these settled first, and writeRankColumn_ has them.
+ * is not here - it needs all six of these settled first, and rankRankingRows_ reads them
+ * back once Sheets has worked them out.
  *
  * They are comparable across rounds because each side is already a ratio against its own
  * round's top five, so a hard Round 2 does not quietly outrank an easy Round 1, and a gap
@@ -1995,7 +2032,7 @@ function writeOverallColumns_(sheet, rows, sep) {
 
   sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_BEST_ROUND_COLUMN, rows, 1)
     .setFormulas(bestRound)
-    .setNumberFormat('0');
+    .setNumberFormat(RANKING_INTEGER_DIGITS);
 
   // The same format as the columns they are read from: one number must not read two ways
   // depending on which column it is sitting in.
@@ -2006,31 +2043,38 @@ function writeOverallColumns_(sheet, rows, sep) {
     .setFormulas(gap)
     .setNumberFormat(RANKING_NORMALIZED_DIGITS);
 
-  // No format set on these two: they are copies, and Time in particular is the judge's own
-  // "1:23.45" text. Handing it a number format is how it turns into something else.
+  // Copies, and each takes the format of the column it copies: a count of tries reads the
+  // same here as it does over in its round.
+  sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_BEST_TRY_COLUMN, rows, 1)
+    .setFormulas(bestTry)
+    .setNumberFormat(RANKING_INTEGER_DIGITS);
+
+  // Time is the one column on the tab that must carry no number format at all. It holds the
+  // judge's own "1:23.45", and a number format is how that turns into something else.
   sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_BEST_TIME_COLUMN, rows, 1)
     .setFormulas(bestTime);
-  sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_BEST_TRY_COLUMN, rows, 1)
-    .setFormulas(bestTry);
 }
 
 /**
- * Rank, worked out here and written as values.
+ * Where every team came, and therefore what order the rows belong in.
  *
  * Rulebook 10.3 is four criteria deep, and a formula spelling all four out is one nobody
  * could read, let alone check against the rulebook during an event. In script it is a
  * comparison function that can be set beside 10.3 and matched line for line.
  *
  * The price is that Rank is a snapshot where the five columns beside it are live. Correct a
- * Raw Score by hand and Best Score follows at once while Rank waits for the next rebuild.
- * The link on row 2 is the fix.
+ * Raw Score by hand and Best Score follows at once while Rank, and the row order with it,
+ * waits for the next rebuild. The link on row 2 is the fix.
  *
  * Read back rather than recomputed. Normalized, Best Score and Variation are already
  * decided by formulas a few lines above, and working them out a second time in JavaScript
  * would be two definitions of the same number waiting to disagree.
+ *
+ * Returns one entry per row, in the order the rows should be written: placed teams first by
+ * 10.3, then everyone with no run at all. Each carries `at`, its index in the Config list.
  */
-function writeRankColumn_(sheet, rows) {
-  if (!rows) return;
+function rankRankingRows_(sheet, rows) {
+  if (!rows) return [];
 
   // Those formulas were written by this same execution and have not been evaluated yet.
   // Without this the read below comes back empty and every team ranks nowhere.
@@ -2043,8 +2087,9 @@ function writeRankColumn_(sheet, rows) {
   const try1 = RANKING_ROUND1_COLUMN + RANKING_TRY_OFFSET - 1;
   const try2 = RANKING_ROUND2_COLUMN + RANKING_TRY_OFFSET - 1;
 
-  const entries = values.map(function (row) {
+  const entries = values.map(function (row, at) {
     return {
+      at: at,
       best: rankingNumber_(row[RANKING_BEST_SCORE_COLUMN - 1], null),
       // A team that ran one round has no gap to show and has not shown it is steady, so it
       // loses this criterion rather than winning it with a gap of nothing. 10.3 assumes two
@@ -2056,9 +2101,9 @@ function writeRankColumn_(sheet, rows) {
     };
   });
 
-  // A team with no score at all is not unranked-last, it is unranked. Sorting a copy keeps
-  // the column in Config order, which is the order the rows are in.
   const placed = entries.filter(function (entry) { return entry.best !== null; });
+  // V8's sort is stable, so teams alike on all four of 10.3 stay in the order Config lists
+  // them. Something has to break that last tie, and the roster is at least a reason.
   placed.sort(rankingOrder_);
 
   let place = 0;
@@ -2068,9 +2113,19 @@ function writeRankColumn_(sheet, rows) {
     entry.place = place;
   });
 
-  sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_RANK_COLUMN, rows, 1)
-    .setValues(entries.map(function (entry) { return [entry.place || '']; }))
-    .setNumberFormat('0');
+  // A team with no run at all is not last, it is unplaced. They go under the standings in
+  // Config order, because a placing invented for them would put them in a race they never
+  // entered.
+  return placed.concat(entries.filter(function (entry) { return entry.best === null; }));
+}
+
+/** The placings, once the rows below have been put in this order. */
+function writeRankPlaces_(sheet, order) {
+  if (!order.length) return;
+
+  sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_RANK_COLUMN, order.length, 1)
+    .setValues(order.map(function (entry) { return [entry.place || '']; }))
+    .setNumberFormat(RANKING_INTEGER_DIGITS);
 }
 
 /**
