@@ -120,6 +120,9 @@ const SynapseScoresheet = (() => {
   let activeLevel = 'creator';
   // Kept around because the round is re-derived from the clock on a timer, not rendered once.
   let competitionInfo = { competitionDate: '', rounds: [], endTime: '', level: '' };
+  // Which Config the runs on this device belong to. Derived from whatever Config is applied
+  // - cached copy or fresh fetch alike - so it is never stored and never goes stale.
+  let configStamp = '';
   let roundTicker = null;
   // scoreState maps blockId to selected option: 'containment' | 'neutralization' | 'analysis' | null
   let scoreState = {};
@@ -632,6 +635,9 @@ const SynapseScoresheet = (() => {
       submissionId: '',
       competition: banner ? banner.textContent.trim() : '',
       competitionDate: competitionInfo.competitionDate || '',
+      // The Config this run was entered under. Once that Config is replaced the run stops
+      // marking its team as submitted, though it stays in History as it was.
+      configStamp: configStamp,
       sheetId: submission.sheetId,
       deviceId: submission.deviceId,
       level: activeLevel,
@@ -1814,6 +1820,10 @@ const SynapseScoresheet = (() => {
   }
 
   function applyMetadata(data) {
+    // First, because renderTeamOptions_ at the bottom of this reads it to decide which
+    // teams still count as submitted.
+    configStamp = hashText_(configFingerprint_(data));
+
     if (data.competition) {
       const banner = document.getElementById('competition-banner');
       if (banner) banner.textContent = data.competition;
@@ -1876,12 +1886,58 @@ const SynapseScoresheet = (() => {
   }
 
   /**
+   * A signature of the Config a run was entered under.
+   *
+   * Built from named fields rather than from the whole reply, so a field the server adds
+   * later cannot look like a Config change on every device at once. Order counts: a
+   * reordered judge list is a different Config, and treating a real edit as noise is the
+   * worse mistake of the two.
+   *
+   * Demo mode builds its schedule off the clock, so every load there is a new Config and
+   * the marks start clean. That is what a demo wants anyway.
+   */
+  function configFingerprint_(data) {
+    const d = data || {};
+    const list = (value) => (Array.isArray(value) ? value : []).join(',');
+
+    const rounds = (Array.isArray(d.rounds) ? d.rounds : [])
+      .map((r) => r.round + '@' + r.time)
+      .join(',');
+
+    const grouped = d.teamsByJudge && typeof d.teamsByJudge === 'object'
+      ? Object.keys(d.teamsByJudge).sort()
+          .map((judge) => judge + ':' + list(d.teamsByJudge[judge]))
+          .join(';')
+      : '';
+
+    return [
+      d.competition || '', d.competitionDate || '', d.level || '', d.endTime || '',
+      rounds, list(d.judges), list(d.teams), grouped
+    ].join('|');
+  }
+
+  /** djb2. Every history entry carries this, and they carry photos too - keep it short. */
+  function hashText_(text) {
+    let hash = 5381;
+    for (let i = 0; i < text.length; i++) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
+    return hash.toString(36);
+  }
+
+  /**
    * Teams this device has already scored in the round now running.
    *
    * Scoped to the round on purpose: a team scores once per round, so without the scope
    * every team would be marked from Round 2 onward and the warning would mean nothing.
    * A run that failed to send is not counted - that one still has to be done. Nor is the
    * test team, which exists to be submitted over and over.
+   *
+   * Nor is a run entered under a different Config. The mark answers "has this team been
+   * scored", and once the roster or the schedule has been replaced the old answer is about
+   * a different competition - C2 in the Config that was is not C2 in the Config that is.
+   * Reloading a Config that has not changed produces the same signature and changes nothing,
+   * which is the point: the reset follows the edit, not the button.
+   *
+   * The run itself is untouched and stays in History either way. Only the mark is dropped.
    */
   function submittedTeamsThisRound_() {
     const done = {};
@@ -1891,6 +1947,9 @@ const SynapseScoresheet = (() => {
 
     readSubmissionHistory_().forEach((entry) => {
       if (!entry || entry.status === 'failed') return;
+      // Entries written before this field existed carry undefined and no longer mark: what
+      // Config they were made under is not known, and guessing would be worse.
+      if (entry.configStamp !== configStamp) return;
       if (String(entry.round) !== round) return;
       if (entry.team && entry.team !== TEST_TEAM) done[entry.team] = true;
     });
