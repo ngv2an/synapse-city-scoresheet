@@ -79,6 +79,19 @@ const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
  * column stopped being somebody else's.
  */
 const RANKING_SHEET_PREFIX = 'Ranking - ';
+// The Result tab: the same standings, flat, with the roster details that a results
+// announcement needs and the two round blocks that only a judge needs left off. Built by
+// reading the Ranking tab back rather than by working the placings out again, so the two
+// can never disagree about who came where.
+const RESULT_SHEET_PREFIX = 'Result - ';
+const RESULT_TEAM_DATA_SHEET = 'Team Data';
+// Joined on Team ID. A column that tab does not carry comes out blank rather than stopping
+// the rebuild: the standings are the point of this sheet and the roster is what dresses
+// them, so a missing school name is not worth an error in the middle of an event.
+const RESULT_TEAM_DATA_COLUMNS = ['State', 'Code', 'School', 'Stu1', 'Stu2', 'Stu3'];
+const RESULT_COLUMNS = ['Rank', 'Team ID', 'Category']
+  .concat(RESULT_TEAM_DATA_COLUMNS)
+  .concat(['Best Score', 'Variation', 'Try', 'Time']);
 // Named, because the offset below is found by looking this exact string up in the list. A
 // rename that touched only one of the two would leave indexOf at -1, and -1 does not throw:
 // it quietly writes the column one to the left of Raw Score.
@@ -1508,7 +1521,178 @@ function buildRankingSheet(sheetId) {
   // Last, so the stamp means "this tab was rebuilt" and not "a rebuild was attempted". A
   // step above throwing leaves the previous time standing, which is the true one.
   writeRankingStamp_(sheet);
+
+  // After the stamp, and deliberately: it is the Ranking tab the stamp speaks for, and a
+  // Result tab that fails to build should not make a finished rebuild look unfinished.
+  buildResultSheet_(ss, sheet, levelTitle, teams.length);
   return sheet;
+}
+
+/**
+ * "Result - <Level>": the standings in one flat table, in the order the Ranking tab put
+ * them, with each team's details from the Team Data tab beside them.
+ *
+ * Read off the Ranking tab, not rebuilt from the runs. Everything here has already been
+ * decided one screen away, and deciding it twice is how two tabs come to name two different
+ * champions.
+ *
+ * Values, not formulas. This is a result: a record of what the standings said when it was
+ * made, which is exactly what a sheet meant to be printed, sent on or signed should be.
+ */
+function buildResultSheet_(ss, ranking, levelTitle, rows) {
+  const name = RESULT_SHEET_PREFIX + levelTitle;
+  const sheet = ss.getSheetByName(name) || ss.insertSheet(name);
+
+  // Wholesale, every rebuild. Nothing on this tab is not written in the lines below, and a
+  // clear is the only thing that makes a column which has stopped being written stop being
+  // shown - notes included, which clear() does not take.
+  sheet.clear();
+  sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).clearNote();
+
+  sheet.getRange(1, 1, 1, RESULT_COLUMNS.length)
+    .setValues([RESULT_COLUMNS])
+    .setFontWeight('bold');
+  sheet.setFrozenRows(1);
+
+  if (rows) {
+    // The Ranking tab was written by this same execution and half of it is formulas, so
+    // without this the read below comes back on an empty tab.
+    SpreadsheetApp.flush();
+
+    const standings = ranking
+      .getRange(RANKING_FIRST_DATA_ROW, 1, rows, RANKING_OVERALL_END)
+      .getValues();
+    const details = readTeamData_(ss, levelTitle);
+    const blank = RESULT_TEAM_DATA_COLUMNS.map(function () { return ''; });
+
+    const values = standings.map(function (row) {
+      const team = cellText_(row[0]);
+
+      return [row[RANKING_RANK_COLUMN - 1], team, levelTitle]
+        .concat(details[teamKey_(team)] || blank)
+        .concat([
+          row[RANKING_BEST_SCORE_COLUMN - 1],
+          row[RANKING_VARIATION_COLUMN - 1],
+          row[RANKING_BEST_TRY_COLUMN - 1],
+          row[RANKING_BEST_TIME_COLUMN - 1]
+        ]);
+    });
+
+    // Text format before the values, not after. A Code of "007" written into a General cell
+    // is the number 7 by the time any format could rescue it.
+    ['Team ID'].concat(RESULT_TEAM_DATA_COLUMNS).concat(['Time']).forEach(function (label) {
+      sheet.getRange(2, resultColumn_(label), rows, 1).setNumberFormat('@');
+    });
+
+    sheet.getRange(2, 1, rows, RESULT_COLUMNS.length).setValues(values);
+
+    sheet.getRange(2, resultColumn_('Rank'), rows, 1)
+      .setNumberFormat(RANKING_INTEGER_DIGITS);
+    sheet.getRange(2, resultColumn_('Try'), rows, 1)
+      .setNumberFormat(RANKING_INTEGER_DIGITS);
+    ['Best Score', 'Variation'].forEach(function (label) {
+      sheet.getRange(2, resultColumn_(label), rows, 1)
+        .setNumberFormat(RANKING_NORMALIZED_DIGITS);
+    });
+  }
+
+  // Nothing on this tab spills, so every column can simply fit what is in it.
+  sheet.autoResizeColumns(1, RESULT_COLUMNS.length);
+  return sheet;
+}
+
+/** A column of the Result tab, by name. Loud for the same reason overallColumn_ is. */
+function resultColumn_(label) {
+  const at = RESULT_COLUMNS.indexOf(label);
+  if (at === -1) throw new Error('Result: no column named "' + label + '".');
+  return at + 1;
+}
+
+/**
+ * A Team ID as a join key. Config and Team Data are two lists kept by two people, and a
+ * lone difference of case between them would blank the roster half of every result row
+ * without anything anywhere saying why.
+ */
+function teamKey_(value) {
+  return cellText_(value).toUpperCase();
+}
+
+/**
+ * The Team Data tab, keyed by Team ID.
+ *
+ * Optional at every step. No tab, no Team ID column on it, or a column named something this
+ * does not recognise, and those cells come out blank. That tab is kept by hand and is not
+ * what the competition runs on; refusing to publish a result because a school name is
+ * missing would be the wrong trade during an event.
+ *
+ * Headers and the tab name are matched without regard to case or spacing, for the same
+ * reason: they are typed by a person, not written by this script - "TEAM ID" and "Team ID"
+ * are the same column.
+ *
+ * One tab holds every category, so a Team ID could in principle appear twice under two of
+ * them. A row carrying this file's own Category wins; a row under any other is kept only as
+ * a fallback, so a Category column spelt in some way this cannot read narrows nothing and
+ * the join is never worse than matching on Team ID alone.
+ */
+function readTeamData_(ss, levelTitle) {
+  const sheet = findTeamDataSheet_(ss);
+  if (!sheet) return {};
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return {};
+
+  const header = data[0].map(function (value) { return cellText_(value).toLowerCase(); });
+  const columnOf = function (names) {
+    for (let i = 0; i < names.length; i++) {
+      const at = header.indexOf(names[i].toLowerCase());
+      if (at !== -1) return at;
+    }
+    return -1;
+  };
+
+  const teamAt = columnOf(['Team ID', 'Team', 'Team Name']);
+  if (teamAt === -1) return {};
+
+  const wanted = RESULT_TEAM_DATA_COLUMNS.map(function (label) { return columnOf([label]); });
+  const categoryAt = columnOf(['Category', 'Level']);
+  const level = cellText_(levelTitle).toUpperCase();
+
+  const own = {};
+  const other = {};
+
+  for (let r = 1; r < data.length; r++) {
+    const key = teamKey_(data[r][teamAt]);
+    if (!key) continue;
+
+    const mine = categoryAt === -1 || !level
+      || cellText_(data[r][categoryAt]).toUpperCase() === level;
+    const into = mine ? own : other;
+
+    // First row for an ID wins within its half. A duplicate under one category is a fault
+    // on that tab, and picking the later one over the earlier would not make it less so.
+    if (!into[key]) {
+      into[key] = wanted.map(function (at) {
+        return at === -1 ? '' : cellText_(data[r][at]);
+      });
+    }
+  }
+
+  Object.keys(other).forEach(function (key) {
+    if (!own[key]) own[key] = other[key];
+  });
+
+  return own;
+}
+
+/** By exact name first, then ignoring case and spacing. */
+function findTeamDataSheet_(ss) {
+  const exact = ss.getSheetByName(RESULT_TEAM_DATA_SHEET);
+  if (exact) return exact;
+
+  const wanted = RESULT_TEAM_DATA_SHEET.toLowerCase().replace(/\s+/g, '');
+  return ss.getSheets().filter(function (sheet) {
+    return sheet.getName().toLowerCase().replace(/\s+/g, '') === wanted;
+  })[0] || null;
 }
 
 /**
