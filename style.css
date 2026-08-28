@@ -862,6 +862,24 @@ body {
   user-select: none;
 }
 
+/* Two lines, left-aligned to each other so "by Team A3" sits under the phrase it qualifies
+   rather than under the box. */
+.consent-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  line-height: 1.25;
+}
+
+/* Lighter than the line above, and inheriting its colour so both turn green together when
+   the box is ticked. */
+.consent-team {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
 .consent-row input[type="checkbox"] {
   width: 22px;
   height: 22px;

@@ -59,8 +59,9 @@ const SynapseScoresheet = (() => {
   const DEVICE_KEY = 'scoresheet.deviceId';
   const JUDGE_KEY = 'scoresheet.judgeName';
   const DEFAULT_MISSION_TIME = '2:00.00';
-  // The team's own ID is appended to this, so it reads "Result Agreed by Team A3".
-  const CONSENT_LABEL = 'Result Agreed by Team';
+  // The second line of the tickbox label. "Result Agreed" above it is fixed and lives in
+  // index.html; only the team changes, which is why only the team is built here.
+  const CONSENT_TEAM_LABEL = 'by Team';
   // A run is two minutes. The box opens on the limit itself, which is why the two read
   // alike. The minute cap is separate and larger on purpose: it guards the shape of the
   // value rather than the rule, and outlives any change to how long a run lasts.
@@ -1315,7 +1316,7 @@ const SynapseScoresheet = (() => {
     if (!label) return;
 
     const team = getSelectedTeam();
-    label.textContent = CONSENT_LABEL + (team ? ' ' + team : '');
+    label.textContent = CONSENT_TEAM_LABEL + (team ? ' ' + team : '');
   }
 
   /** Agreement belongs to one run. It is never carried into the next one by default. */

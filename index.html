@@ -142,7 +142,13 @@
       <section class="score-action-bar" aria-label="Photo + Consent">
         <label class="consent-row" for="consent-check">
           <input type="checkbox" id="consent-check">
-          <span id="consent-label">Result Agreed by Team</span>
+          <!-- Two lines: what is being agreed, then who is agreeing it. The team is the half
+               that changes, and on its own line a mistap on the team list is a line that
+               reads wrong rather than a word buried mid-sentence. -->
+          <span class="consent-text">
+            <span class="consent-title">Result Agreed</span>
+            <span class="consent-team" id="consent-label">by Team</span>
+          </span>
         </label>
         <button class="btn-action btn-photo" id="btn-photo" title="Photo + Consent">Photo + Consent</button>
       </section>
