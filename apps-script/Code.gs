@@ -74,12 +74,18 @@ const SUBMISSION_TIME_FORMAT = 'HH:mm:ss';
  * of it to arrive. The two round blocks keep their order, separated by a blank column each,
  * so the three blocks read as three.
  *
- * Every column is written by a rebuild, Normalized Score included. It was left alone for as
+ * Every column is written by a rebuild, Normalized included. It was left alone for as
  * long as nothing here defined what normalising meant; Base Top Score defines it, so the
  * column stopped being somebody else's.
  */
 const RANKING_SHEET_PREFIX = 'Ranking - ';
-const RANKING_ROUND_COLUMNS = ['Submission', 'Raw Score', 'Normalized Score', 'Time', 'Try'];
+// Named, because the offset below is found by looking this exact string up in the list. A
+// rename that touched only one of the two would leave indexOf at -1, and -1 does not throw:
+// it quietly writes the column one to the left of Raw Score.
+const RANKING_NORMALIZED_LABEL = 'Normalized';
+const RANKING_ROUND_COLUMNS = [
+  'Submission', 'Raw Score', RANKING_NORMALIZED_LABEL, 'Time', 'Try'
+];
 const RANKING_OVERALL_GROUP = 'Overall Result';
 const RANKING_OVERALL_COLUMNS = [
   'Best Score', 'Consistency', 'Time of Best Round', 'Try of Best Round'
@@ -122,9 +128,9 @@ const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
 // hold finer detail at this scale than three did at a scale of one.
 const RANKING_NORMALIZED_SCALE = 100;
 const RANKING_NORMALIZED_DIGITS = '0.00';
-const RANKING_NORMALIZED_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Normalized Score');
+const RANKING_NORMALIZED_OFFSET = RANKING_ROUND_COLUMNS.indexOf(RANKING_NORMALIZED_LABEL);
 // The Overall Result block, driven off a list the way the round blocks are. All four are
-// read from the pair of Normalized Scores, which sit on one scale by construction - each
+// read from the pair of Normalized values, which sit on one scale by construction - each
 // already measured against its own round's top five - and that is the whole reason a team's
 // two rounds can be compared to each other at all.
 const RANKING_CONSISTENCY_COLUMN =
@@ -135,7 +141,7 @@ const RANKING_BEST_TRY_COLUMN =
   RANKING_OVERALL_COLUMN + RANKING_OVERALL_COLUMNS.indexOf('Try of Best Round');
 // Consistency runs the opposite direction to every other number on this tab - low is steady
 // - so its header carries a note saying so.
-const RANKING_CONSISTENCY_NOTE = 'Consistency: the gap between the two Normalized Scores. '
+const RANKING_CONSISTENCY_NOTE = 'Consistency: the gap between the two Normalized values. '
   + 'Lower is steadier. Blank until the team has run both rounds.';
 // Time and Try are copied off whichever round produced the Best Score, not off the better
 // time and the better try picked separately, which would describe a run nobody made.
@@ -1418,7 +1424,7 @@ function rankingPage_(message, ok) {
  * Run it from the editor when you want the standings, or point a time-driven trigger at
  * buildRankingSheets().
  *
- * Normalized Score is written as a formula against the Base Top Score in the header, so it
+ * Normalized is written as a formula against the Base Top Score in the header, so it
  * follows a hand-edited Raw Score without waiting for the next rebuild.
  */
 function buildRankingSheet(sheetId) {
@@ -1826,7 +1832,7 @@ function writeRankingRows_(sheet, teams, runs, sep) {
     sheet.insertRowsAfter(sheet.getMaxRows(), needed - sheet.getMaxRows());
   }
 
-  // One block per round, all five columns of it. This used to skip Normalized Score, back
+  // One block per round, all five columns of it. This used to skip Normalized, back
   // when that column held a formula nobody here had written; it holds one written below now.
   if (height > 0) {
     sheet.getRange(RANKING_FIRST_DATA_ROW, 1, height, 1).clearContent();
@@ -1861,7 +1867,7 @@ function writeRankingRows_(sheet, teams, runs, sep) {
 }
 
 /**
- * The four Overall Result columns, all read off the same pair of Normalized Scores.
+ * The four Overall Result columns, all read off the same pair of Normalized values.
  *
  * Best Score is the better of the two. Consistency is how far apart they were - the same
  * pair, asked how steady rather than how high. Time and Try are lifted off whichever round
@@ -1879,7 +1885,7 @@ function writeRankingRows_(sheet, teams, runs, sep) {
  * show up as wildly inconsistent for no reason but the schedule. So =2, and blank until the
  * second run lands.
  *
- * N() around each side of the comparison is not decoration. An empty Normalized Score is
+ * N() around each side of the comparison is not decoration. An empty Normalized cell is
  * the string "" and not a blank cell, and Sheets sorts text above every number, so a plain
  * D>=J is TRUE for a team that has only run Round 2 and would report Round 1's empty Time.
  * N() reads "" as 0 and the comparison means what it looks like it means.
@@ -1936,7 +1942,7 @@ function writeOverallColumns_(sheet, rows, sep) {
 }
 
 /**
- * Normalized Score, one formula per team row: this team's Raw Score over the Base Top Score
+ * Normalized, one formula per team row: this team's Raw Score over the Base Top Score
  * sitting in the header of the same column block, on a scale where the top five average is
  * 100 rather than 1. The same ranking either way - it is one constant factor - so this is
  * about reading two-digit differences off the column without counting leading zeros.
