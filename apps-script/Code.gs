@@ -2409,15 +2409,21 @@ function writeOverallColumns_(sheet, rows, sep) {
       + 'IF(' + timeA + '<=' + timeB + sep + '1' + sep + '2))))))']);
 
     // Off the Best Round cell beside them, so the winner is settled once and copied twice.
-    const offBestRound = function (column1, column2) {
+    const offBestRound = function (one, two) {
       return ['=IF(' + won + row + '=""' + sep + '""' + sep
-        + 'IF(' + won + row + '=1' + sep + column1 + row + sep + column2 + row + '))'];
+        + 'IF(' + won + row + '=1' + sep + one + sep + two + '))'];
     };
+
+    // A reference to an empty cell is 0 to Sheets, and 0 is a real count of tries. Left as
+    // it comes, a round that recorded none would show up here as the most efficient run on
+    // the tab and rankRankingRows_ would rank it that way. Blank is what it is.
+    const kept1 = 'IF(COUNT(' + try1 + row + ')=1' + sep + try1 + row + sep + '"")';
+    const kept2 = 'IF(COUNT(' + try2 + row + ')=1' + sep + try2 + row + sep + '"")';
 
     best.push(['=IF(' + ran + '=0' + sep + '""' + sep + 'MAX(' + pair + '))']);
     gap.push(['=IF(' + ran + '=2' + sep + 'ABS(' + a + '-' + b + ')' + sep + '"")']);
-    bestTime.push(offBestRound(time1, time2));
-    bestTry.push(offBestRound(try1, try2));
+    bestTime.push(offBestRound(time1 + row, time2 + row));
+    bestTry.push(offBestRound(kept1, kept2));
   }
 
   // First of the five, because the two at the bottom read the cells it writes.
@@ -2521,9 +2527,6 @@ function rankRankingRows_(sheet, rows) {
     .getRange(RANKING_FIRST_DATA_ROW, 1, rows, RANKING_LAST_COLUMN)
     .getValues();
 
-  const try1 = RANKING_ROUND1_COLUMN + RANKING_TRY_OFFSET - 1;
-  const try2 = RANKING_ROUND2_COLUMN + RANKING_TRY_OFFSET - 1;
-
   const entries = values.map(function (row, at) {
     return {
       at: at,
@@ -2532,8 +2535,18 @@ function rankRankingRows_(sheet, rows) {
       // loses this criterion rather than winning it with a gap of nothing. 10.3 assumes two
       // rounds; this is the reading that does not reward the missing one.
       variation: rankingNumber_(row[RANKING_VARIATION_COLUMN - 1], Infinity),
-      // Both rounds, per 10.3: "total Tries". Only Time is read off the best round alone.
-      tries: (Number(row[try1]) || 0) + (Number(row[try2]) || 0),
+      // The best round's Tries, not the two rounds added together. Criteria 1 and 4 both
+      // describe that one run, and a total drawn from both would let a team's other round -
+      // the one already set aside for being worse - decide a placing this one has won.
+      //
+      // It is also the figure in the Try column beside this, which is the point: reading the
+      // block left to right is meant to be reading the tiebreak, and a criterion settled on
+      // a number the tab never shows cannot be checked against the rulebook during an event.
+      //
+      // Absent rather than 0 when there is no count to read, the reading Variation takes
+      // above: a team whose tries nobody wrote down loses this criterion instead of winning
+      // it outright on the fewest of them.
+      tries: rankingNumber_(row[RANKING_BEST_TRY_COLUMN - 1], Infinity),
       time: missionTimeMs_(row[RANKING_BEST_TIME_COLUMN - 1])
     };
   });
@@ -2570,8 +2583,8 @@ function writeRankPlaces_(sheet, order) {
  *
  *   1. Highest Normalized Score of the best round.
  *   2. Consistency: smallest difference in Normalized Scores between the two rounds.
- *   3. Efficiency: lowest number of total Tries.
- *   4. Speed: fastest completion time.
+ *   3. Efficiency: fewest Tries in the best round.
+ *   4. Speed: fastest completion time in the best round.
  *
  * Negative when a places above b. Each line falls through to the next only on an exact tie,
  * which is what "in case of a tie" asks for.
