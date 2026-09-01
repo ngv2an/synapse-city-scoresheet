@@ -193,6 +193,11 @@ const RANKING_BEST_TRY_COLUMN = overallColumn_('Try');
 // time and the better try picked separately, which would describe a run nobody made.
 const RANKING_TIME_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Time');
 const RANKING_TRY_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Try');
+// Stands in for a Try or a Time the tab does not have, and only inside the Best Round
+// tiebreak. Larger than any count of tries and any time in hundredths that a real run
+// could produce, so a figure nobody recorded loses its criterion rather than winning it
+// on a zero - the reading Variation already takes two paragraphs down.
+const RANKING_TIEBREAK_LAST = 999999999;
 // Whole numbers, all three of them: a count of submissions, a score summed from missions
 // that are worth whole points each, and a count of tries. Named and set outright, because a
 // column nobody formats keeps the format some earlier layout left on it.
@@ -2338,14 +2343,30 @@ function writeRankingRows_(sheet, teams, runs, sep) {
  * show up as wildly inconsistent for no reason but the schedule. So =2, and blank until the
  * second run lands.
  *
- * N() around each side of the comparison is not decoration. An empty Normalized cell is
- * the string "" and not a blank cell, and Sheets sorts text above every number, so a plain
- * D>=J is TRUE for a team that has only run Round 2 and would report Round 1's empty Time.
- * N() reads "" as 0 and the comparison means what it looks like it means.
+ * Which round won is asked the way the rulebook asks it, one criterion at a time and in
+ * order:
  *
- * Round 1 takes a tie, and all three columns that depend on the winner are built from one
- * shared prefix so they cannot disagree about which round it was - a row naming Round 1
- * beside Round 2's time would be a run that never happened.
+ *   a round the team never ran cannot win it,
+ *   then the higher score,
+ *   then the fewer Tries,
+ *   then the faster Time,
+ *   then Round 1.
+ *
+ * Two rounds that read the same on the tab have to be treated as the same, so the scores
+ * are rounded to the decimal the column displays before they are compared. At full
+ * precision the two sides are ratios against different Base Top Scores and would hardly
+ * ever land on one number, so every criterion under this one would go unread and a tie a
+ * judge can see on the screen would be settled by a difference nobody can. That is the
+ * reading rankingNumber_ already takes for Rank, and the two must not disagree.
+ *
+ * A round the team did not run is kept out by COUNT rather than by comparing scores. N()
+ * reads an empty Normalized cell as 0, which is fine for a comparison of scores and wrong
+ * for everything under it: a team that ran Round 2 alone and scored 0 there would tie
+ * itself 0 to 0, and then win the Try criterion with the no tries it never took.
+ *
+ * Best Time and Best Try read the Best Round cell rather than working the winner out a
+ * second time. There is one answer to which round it was and three columns that need it,
+ * and a row naming Round 1 beside Round 2's time would be a run that never happened.
  */
 function writeOverallColumns_(sheet, rows, sep) {
   const first = columnLetter_(RANKING_ROUND1_COLUMN + RANKING_NORMALIZED_OFFSET);
@@ -2354,6 +2375,7 @@ function writeOverallColumns_(sheet, rows, sep) {
   const time2 = columnLetter_(RANKING_ROUND2_COLUMN + RANKING_TIME_OFFSET);
   const try1 = columnLetter_(RANKING_ROUND1_COLUMN + RANKING_TRY_OFFSET);
   const try2 = columnLetter_(RANKING_ROUND2_COLUMN + RANKING_TRY_OFFSET);
+  const won = columnLetter_(RANKING_BEST_ROUND_COLUMN);
   const bestRound = [];
   const best = [];
   const gap = [];
@@ -2367,18 +2389,38 @@ function writeOverallColumns_(sheet, rows, sep) {
     const pair = a + sep + b;
     const ran = 'COUNT(' + pair + ')';
 
-    // Shared by every column that has to know which round won, so no edit can move one of
-    // them without moving the rest.
-    const won = '=IF(' + ran + '=0' + sep + '""' + sep
-      + 'IF(N(' + a + ')>=N(' + b + ')' + sep;
+    const shownA = 'ROUND(' + a + sep + RANKING_TIE_DECIMALS + ')';
+    const shownB = 'ROUND(' + b + sep + RANKING_TIE_DECIMALS + ')';
+    const tryA = rankingTryFormula_(try1 + row, sep);
+    const tryB = rankingTryFormula_(try2 + row, sep);
+    const timeA = missionTimeFormula_(time1 + row, sep);
+    const timeB = missionTimeFormula_(time2 + row, sep);
+
+    // One IF per criterion, in the order set out above, each reached only where the one
+    // before it came out level. The last has no test left to make and hands the tie to
+    // Round 1, which is the only line of this a rulebook does not decide.
+    bestRound.push(['=IF(' + ran + '=0' + sep + '""' + sep
+      + 'IF(COUNT(' + b + ')=0' + sep + '1' + sep
+      + 'IF(COUNT(' + a + ')=0' + sep + '2' + sep
+      + 'IF(' + shownA + '<>' + shownB + sep
+        + 'IF(' + shownA + '>' + shownB + sep + '1' + sep + '2)' + sep
+      + 'IF(' + tryA + '<>' + tryB + sep
+        + 'IF(' + tryA + '<' + tryB + sep + '1' + sep + '2)' + sep
+      + 'IF(' + timeA + '<=' + timeB + sep + '1' + sep + '2))))))']);
+
+    // Off the Best Round cell beside them, so the winner is settled once and copied twice.
+    const offBestRound = function (column1, column2) {
+      return ['=IF(' + won + row + '=""' + sep + '""' + sep
+        + 'IF(' + won + row + '=1' + sep + column1 + row + sep + column2 + row + '))'];
+    };
 
     best.push(['=IF(' + ran + '=0' + sep + '""' + sep + 'MAX(' + pair + '))']);
     gap.push(['=IF(' + ran + '=2' + sep + 'ABS(' + a + '-' + b + ')' + sep + '"")']);
-    bestRound.push([won + '1' + sep + '2))']);
-    bestTime.push([won + time1 + row + sep + time2 + row + '))']);
-    bestTry.push([won + try1 + row + sep + try2 + row + '))']);
+    bestTime.push(offBestRound(time1, time2));
+    bestTry.push(offBestRound(try1, try2));
   }
 
+  // First of the five, because the two at the bottom read the cells it writes.
   sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_BEST_ROUND_COLUMN, rows, 1)
     .setFormulas(bestRound)
     .setNumberFormat(RANKING_INTEGER_DIGITS);
@@ -2402,6 +2444,52 @@ function writeOverallColumns_(sheet, rows, sep) {
   // judge's own "1:23.45", and a number format is how that turns into something else.
   sheet.getRange(RANKING_FIRST_DATA_ROW, RANKING_BEST_TIME_COLUMN, rows, 1)
     .setFormulas(bestTime);
+}
+
+/**
+ * A Try count as something the Best Round tiebreak can compare.
+ *
+ * A cell holding anything but a number - a blank, or the text tryCount_ hands back when the
+ * Scores tab has something in that column it cannot read - comes out as the sentinel and
+ * loses the criterion. The alternative is N(), which reads a missing count as zero tries
+ * and would hand the round nobody has the figures for a win on the fewest of them.
+ */
+function rankingTryFormula_(cell, sep) {
+  return 'IF(COUNT(' + cell + ')=1' + sep + cell + sep + RANKING_TIEBREAK_LAST + ')';
+}
+
+/**
+ * A mission time cell as a number a formula can compare - hundredths of a second, so that
+ * every step of it is a whole one.
+ *
+ * The column holds the judge's own "1:23.45" as text on purpose, and text compares the
+ * wrong way round the moment a run passes ten minutes, so this takes it apart: the minutes
+ * before the colon, the seconds after it, the hundredths after the dot. ".5" is five tenths
+ * and so fifty hundredths, padded on the right - the reading missionTimeMs_ applies on the
+ * script side, and the two cannot be allowed to disagree about what half a second is.
+ *
+ * Every VALUE() here is handed a run of digits and never a decimal, and that is what keeps
+ * this off the locale. On a sheet that writes 560,00 where another writes 560.00 - and the
+ * tabs this builds are the first kind - VALUE("23.45") is an error, so a tiebreak that
+ * parsed the seconds in one piece would quietly lose them.
+ *
+ * Anything that will not read - a blank, an unfinished run, a note someone typed into the
+ * cell - comes out as the sentinel and sorts last, which is where a time nobody recorded
+ * belongs. Two of those compare equal and fall through to Round 1.
+ */
+function missionTimeFormula_(cell, sep) {
+  const colon = 'FIND(":"' + sep + cell + ')';
+  const rest = 'MID(' + cell + sep + colon + '+1' + sep + '9)';
+  const dot = 'FIND("."' + sep + rest + ')';
+
+  const minutes = 'VALUE(LEFT(' + cell + sep + colon + '-1))*6000';
+  // A time written without a fraction is a whole number of seconds, not an error.
+  const seconds = 'VALUE(IFERROR(LEFT(' + rest + sep + dot + '-1)' + sep + rest + '))*100';
+  const hundredths = 'IFERROR(VALUE(LEFT(MID(' + rest + sep + dot + '+1' + sep + '2)&"00"'
+    + sep + '2))' + sep + '0)';
+
+  return 'IFERROR(' + minutes + '+' + seconds + '+' + hundredths + sep
+    + RANKING_TIEBREAK_LAST + ')';
 }
 
 /**
