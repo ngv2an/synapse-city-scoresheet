@@ -114,8 +114,13 @@ const RESULT_URL_PLACEHOLDER = 'Paste link here';
 // rename that touched only one of the two would leave indexOf at -1, and -1 does not throw:
 // it quietly writes the column one to the left of Raw Score.
 const RANKING_NORMALIZED_LABEL = 'Normalized';
+// Try before Time, the order rulebook 10.3 breaks a tie in and the order the Overall
+// Result block below already reads in. The two blocks describe the same pair of numbers, so
+// a judge glancing from a round across to Overall should not have to swap them over in
+// their head. Everything downstream is addressed by these names rather than by position -
+// see the offsets below - so this line is where the layout is decided.
 const RANKING_ROUND_COLUMNS = [
-  'Submission', 'Raw Score', RANKING_NORMALIZED_LABEL, 'Time', 'Try'
+  'Submission', 'Raw Score', RANKING_NORMALIZED_LABEL, 'Try', 'Time'
 ];
 const RANKING_OVERALL_GROUP = 'Overall Result';
 // Rank, then which round earned it, then rulebook 10.3 in its own order: Best Score, then
@@ -2275,15 +2280,29 @@ function writeRankingRows_(sheet, teams, runs, sep) {
     .setValues(teams.map(function (team) { return [team]; }));
 
   [['1', RANKING_ROUND1_COLUMN], ['2', RANKING_ROUND2_COLUMN]].forEach(function (round) {
-    const cells = teams.map(function (team) {
-      const entry = runs[team + '\t' + round[0]];
-      return entry ? [entry.count, entry.score, entry.mission, entry.tries] : ['', '', '', ''];
+    // Laid out by column name, not by counting places along the block. Two writes fixed
+    // at offsets 0-1 and 3-4 were this same layout said a second time in arithmetic, and
+    // the two sayings could disagree: moving Try ahead of Time in RANKING_ROUND_COLUMNS
+    // would move the header and leave the values where they were, filing every round's
+    // mission time under Try.
+    //
+    // Normalized goes out blank and picks up its formula from writeNormalizedColumn_
+    // below, which is what lets the whole block go in as one write.
+    const rows = teams.map(function (team) {
+      const entry = runs[team + '\t' + round[0]] || {};
+      const byLabel = {
+        'Submission': entry.count,
+        'Raw Score': entry.score,
+        'Try': entry.tries,
+        'Time': entry.mission
+      };
+      return RANKING_ROUND_COLUMNS.map(function (label) {
+        return byLabel[label] === undefined ? '' : byLabel[label];
+      });
     });
 
-    sheet.getRange(RANKING_FIRST_DATA_ROW, round[1], teams.length, 2)
-      .setValues(cells.map(function (c) { return [c[0], c[1]]; }));
-    sheet.getRange(RANKING_FIRST_DATA_ROW, round[1] + 3, teams.length, 2)
-      .setValues(cells.map(function (c) { return [c[2], c[3]]; }));
+    sheet.getRange(RANKING_FIRST_DATA_ROW, round[1], teams.length,
+      RANKING_ROUND_COLUMNS.length).setValues(rows);
 
     // Time is deliberately not among these: it is the judge's own "1:23.45" and a number
     // format is how that turns into something else.
