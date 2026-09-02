@@ -1288,12 +1288,13 @@ const SynapseScoresheet = (() => {
    * is not a time, and neither is anything past the two minutes a run is allowed. Both are
    * caught here rather than at the Sheet, where a bad value is already a row.
    *
-   * Hundredths may be missing or half-typed; '1:30' is a whole answer and is treated as
-   * one. Seconds may not - a two-digit seconds field is what makes the value readable.
+   * Every digit is required, hundredths included. '1:30' reads like a whole answer, but it
+   * is one the judge stopped typing halfway through, and a hundredth filled in as .00 is a
+   * result nobody timed.
    */
   function missionTimeError_(value) {
-    const match = /^(\d{1,2}):(\d{2})(?:\.(\d{1,2}))?$/.exec(String(value).trim());
-    if (!match) return 'Time must be written m:ss.ss.';
+    const match = /^(\d{1,2}):(\d{2})\.(\d{2})$/.exec(String(value).trim());
+    if (!match) return 'Time must be written in full, m:ss.ss.';
 
     const minutes = Number(match[1]);
     const seconds = Number(match[2]);
@@ -1302,8 +1303,7 @@ const SynapseScoresheet = (() => {
     }
     if (seconds > 59) return 'Seconds must be 59 or less.';
 
-    // '.5' is five tenths, so half a second, not five hundredths of one.
-    const hundredths = Number((match[3] || '0').padEnd(2, '0'));
+    const hundredths = Number(match[3]);
     if (minutes * 60000 + seconds * 1000 + hundredths * 10 > MISSION_TIME_LIMIT_MS) {
       return 'Time cannot pass ' + DEFAULT_MISSION_TIME + '.';
     }
@@ -2619,9 +2619,10 @@ const SynapseScoresheet = (() => {
       timeInput.addEventListener('input', () => {
         timeInput.value = formatMissionTime(timeInput.value);
 
-        // Only once the seconds are both there. On '2:7' the field is on its way to '2:75'
-        // and to '2:07' alike, and turning red on the second of those would be wrong.
-        if (/^\d{1,2}:\d{2}/.test(timeInput.value)) markMissionTime_(timeInput);
+        // Only once all five digits are in. Everything on the way to '1:23.45' is missing
+        // some of them, and red for a time still being typed would be wrong. What the mask
+        // still lets through - '2:75.00', or a time past the limit - turns red on blur.
+        if (/^\d{1,2}:\d{2}\.\d{2}$/.test(timeInput.value)) markMissionTime_(timeInput);
         else timeInput.removeAttribute('aria-invalid');
 
         saveDraft();
