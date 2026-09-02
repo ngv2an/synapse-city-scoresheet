@@ -1179,6 +1179,9 @@ const SynapseScoresheet = (() => {
     currentPhotoUpload = null;
     currentPhotoTiming = null;
     renderPhotoMeta_();
+    // The photo was one of the three holding the Submit button. Removing it takes the
+    // button back, and nothing else on this path would have said so.
+    setSubmitButtonState_(submitState);
   }
 
   /**
@@ -1517,9 +1520,9 @@ const SynapseScoresheet = (() => {
     const spec = SUBMIT_BUTTON_STATES[state] || SUBMIT_BUTTON_STATES.idle;
     btn.textContent = spec[0];
     btn.className = 'btn-submit' + spec[1];
-    // Two owners, one attribute: the run, and the team's agreement. Composed here so
-    // neither can quietly hand the button back while the other is still holding it.
-    btn.disabled = SUBMIT_SENT_STATES.indexOf(state) !== -1 || !hasConsent_();
+    // Three owners, one attribute: the run, the team's agreement, and the photo. Composed
+    // here so none of them can quietly hand the button back while another still holds it.
+    btn.disabled = SUBMIT_SENT_STATES.indexOf(state) !== -1 || !hasConsent_() || !hasPhoto_();
   }
 
   /** Missing box means no gate. A control that is not there must not lock out the run. */
@@ -1529,11 +1532,35 @@ const SynapseScoresheet = (() => {
   }
 
   /**
+   * No photo, no submission.
+   *
+   * The tickbox above says the team agreed the result; the photo is what they agreed it
+   * against, and a run that reaches the Sheet without one leaves nothing to check a
+   * disputed score against later. So it is required in the same way the agreement is, and
+   * held on the same button.
+   *
+   * Read off the data URL and not the Drive link, because the upload is allowed to fail: a
+   * photo that could not be filed still travels with the run as photoBase64, and a judge
+   * standing in a bad signal should not be stopped by a step the run has already worked
+   * around. What is being asked is whether the photo was taken.
+   *
+   * Missing input means no gate, the reading hasConsent_ takes for the same reason. A page
+   * with no way to take a photo must not become a page with no way to submit.
+   */
+  function hasPhoto_() {
+    return !document.getElementById('photo-input') || !!currentPhotoDataUrl;
+  }
+
+  /**
    * Photo and Submit both wait on the tickbox.
    *
    * The bar reads in the order it happens - agree, photograph, send - so nothing below the
    * agreement is reachable until it is given. It also means a photo is never taken against
    * a result the team has not yet seen.
+   *
+   * Submit waits on both in turn: the tickbox opens the camera, and the photo opens Submit.
+   * Re-applied through setSubmitButtonState_ here, which asks hasPhoto_ itself, so ticking
+   * the box back on cannot hand Submit over while the photo is still missing.
    */
   function applyConsentLock_() {
     const photo = document.getElementById('btn-photo');
@@ -2174,6 +2201,13 @@ const SynapseScoresheet = (() => {
       if (!focusTarget) focusTarget = consent;
     }
 
+    // Checked here as well as on the button, and for the reason the agreement above is: a
+    // gate that only disables a control is a gate every other path to submit walks past.
+    if (!hasPhoto_()) {
+      reasons.push('Photo of the final field-track is required.');
+      if (!focusTarget) focusTarget = document.getElementById('btn-photo');
+    }
+
     const timeInput = document.getElementById('mission-time');
     let missionTime = timeInput ? timeInput.value.trim() : '';
     if (!missionTime) {
@@ -2435,6 +2469,9 @@ const SynapseScoresheet = (() => {
           currentPhotoInfo = { width: photo.width, height: photo.height, bytes: photo.bytes };
           currentPhotoTiming = { compressMs: Date.now() - takenAt, uploadMs: 0 };
           renderPhotoMeta_();
+          // Here rather than after the upload: the run can carry the photo itself, so what
+          // opens Submit is the photo existing, not the Drive file landing.
+          setSubmitButtonState_(submitState);
           currentPhotoUpload = startPhotoUpload_(photo.dataUrl);
 
           const previewImg = document.getElementById('photo-preview');
