@@ -69,7 +69,12 @@ const SynapseScoresheet = (() => {
   const MISSION_TIME_MAX_MINUTES = 59;
   // Always the last team on the list, whatever Config holds. A run under this name is a
   // pipeline check, so it is the one team allowed to submit before Round 1 opens.
-  const TEST_TEAM = 'Test Submission';
+  //
+  // Spelled the same here, in the Team ID list in index.html and in RANKING_TEST_TEAM on
+  // the Sheet side. It is written into the Team column as it stands, and all three read
+  // it back by comparing the whole string, so a rename that misses one of them is a
+  // rehearsal run that quietly stops being one.
+  const TEST_TEAM = 'Submission Rehearsal';
 
   /**
    * Opened with no ?link=, the page has no Sheet behind it: Config is generated here from

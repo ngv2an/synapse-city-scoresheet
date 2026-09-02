@@ -160,10 +160,10 @@ const RANKING_SPACER_WIDTH = 24;
 const RANKING_INVALID_COLUMN = RANKING_ROUND1_COLUMN;
 const RANKING_INVALID_NOTE = 'A submission is ranked only if it landed on the Competition '
   + 'Date, between Round 1 Time and End Time. Both ends count as inside. A bound left blank '
-  + 'in Config is not checked at all. Test Submission answers to the date alone.';
+  + 'in Config is not checked at all. Submission Rehearsal answers to the date alone.';
 // Must match TEST_TEAM in script.js: it is what the app writes into the Team column, and
 // the two sides have to agree on the spelling for the exemption below to mean anything.
-const RANKING_TEST_TEAM = 'Test Submission';
+const RANKING_TEST_TEAM = 'Submission Rehearsal';
 // The top five is read off Raw Score, the column the app actually produces. Normalized
 // Score beside it is derived from that same five, so ranking on it would be circular.
 const RANKING_SCORE_OFFSET = RANKING_ROUND_COLUMNS.indexOf('Raw Score');
