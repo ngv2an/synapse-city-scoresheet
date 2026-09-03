@@ -160,28 +160,29 @@
              gone grey, controls that no longer answer - and an absence is not a message. -->
         <p class="consent-locked" id="consent-locked" role="status" hidden>Result Locked</p>
 
+        <!-- Directly above the button, because once there is a photo the button is about
+             that photo: what you are looking at is what Retake would replace. -->
+        <section class="photo-preview-container" id="photo-container" style="display: none;">
+          <div class="photo-card">
+            <div class="photo-header">
+              <span class="photo-title">Mission Photo</span>
+              <span class="photo-meta" id="photo-meta"></span>
+              <button type="button" class="btn-remove-photo" id="btn-remove-photo" title="Remove photo">&times;</button>
+            </div>
+            <div class="photo-img-wrap">
+              <img id="photo-preview" src="" alt="Mission Photo">
+            </div>
+          </div>
+        </section>
+
         <!-- Two lines: what to photograph, and what has to be in the photo. The second is a
-             condition on the first, not a second task, so it is set below rather than beside. -->
+             condition on the first, not a second task, so it is set below rather than beside.
+             The first line is rewritten by renderPhotoMeta_ once a photo exists. -->
         <button class="btn-action btn-photo" id="btn-photo"
                 title="Photo of Final Field-track with Team ID Consent Proof">
-          <span class="btn-photo-line">Photo of Final Field-track</span>
+          <span class="btn-photo-line" id="btn-photo-line">Photo of Final Field-track</span>
           <span class="btn-photo-note">with Team ID Consent Proof</span>
         </button>
-      </section>
-
-      <!-- Kept between the two buttons, where it has always been: a photo taken and then
-           shown below the Submit button would read as something that happened afterwards. -->
-      <section class="photo-preview-container" id="photo-container" style="display: none;">
-        <div class="photo-card">
-          <div class="photo-header">
-            <span class="photo-title">Mission Photo</span>
-            <span class="photo-meta" id="photo-meta"></span>
-            <button type="button" class="btn-remove-photo" id="btn-remove-photo" title="Remove photo">&times;</button>
-          </div>
-          <div class="photo-img-wrap">
-            <img id="photo-preview" src="" alt="Mission Photo">
-          </div>
-        </div>
       </section>
 
       <!-- Label and colour are both set by script.js: this button is the only report on a

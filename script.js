@@ -1212,9 +1212,29 @@ const SynapseScoresheet = (() => {
       });
   }
 
+  // The button's first line, before and after. The second line is the condition on the shot
+  // and holds either way, so it is left in the markup and never touched from here.
+  const PHOTO_BUTTON_LABEL = 'Photo of Final Field-track';
+  const PHOTO_BUTTON_RETAKE = 'Retake Photo of Final Field-track';
+
+  /**
+   * Everything the photo shows about itself: its size, and what the button offers to do next.
+   *
+   * Both are read off currentPhotoDataUrl rather than set by whoever happened to change it,
+   * so the button cannot go on saying Retake after a photo has been removed. The two call
+   * sites - taking one and clearing one - already went through here.
+   */
   function renderPhotoMeta_() {
     const el = document.getElementById('photo-meta');
     if (el) el.textContent = formatPhotoInfo_(currentPhotoInfo);
+
+    const line = document.getElementById('btn-photo-line');
+    const button = document.getElementById('btn-photo');
+    const label = currentPhotoDataUrl ? PHOTO_BUTTON_RETAKE : PHOTO_BUTTON_LABEL;
+
+    if (line) line.textContent = label;
+    // The tooltip is the same sentence run together, so it moves with the label.
+    if (button) button.title = label + ' with Team ID Consent Proof';
   }
 
   /**
