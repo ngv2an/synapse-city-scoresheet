@@ -309,12 +309,53 @@ const SHEET_URL_PREFIX = 'https://docs.google.com/spreadsheets/d/';
 const SCORESHEET_URL_PREFIX = 'https://ngv2an.github.io/synapse-city-scoresheet/?link=';
 
 /** Every level's Sheet, in level order. Only the Explorer Config lists them. */
+// Level, Sheet ID, and the token the public link carries in its place.
+//
+// The scoresheet URL used to be the Sheet ID in plain sight, which handed the file's address
+// to anyone who saw a judge's screen. A token says nothing about what it points at, and
+// changing one is an edit to one word here.
+//
+// To rotate: put the new token in RETIRED_LINK_TOKENS beside the old one first, hand out the
+// new link, and delete the old row once nobody is still on it. Both resolve to the same file
+// while that is going on, which is what makes it a changeover rather than an outage.
 const LEVEL_SHEET_IDS = [
-  ['Explorer', '1ljm-gzjs3UgJB-fuNghADJn_byl-CtHib0APSNol2T0'],
-  ['Creator', '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc'],
-  ['Innovator', '16E0nKN3FAS44ZiRJAISuG6dJNCrGehCvuInQhtRAyTA'],
-  ['Master', '1fuRBaq0HJ3_w8JRM4wgEN5KhbK534XcDs6gnqGDal4o']
+  ['Explorer', '1ljm-gzjs3UgJB-fuNghADJn_byl-CtHib0APSNol2T0', '8CBUHYV8'],
+  ['Creator', '1jnnh5phoBJO1JsKtzumCIOHQUl3kyeY13fThvHza2Bc', 'UK26BWH3'],
+  ['Innovator', '16E0nKN3FAS44ZiRJAISuG6dJNCrGehCvuInQhtRAyTA', 'DFPPAG86'],
+  ['Master', '1fuRBaq0HJ3_w8JRM4wgEN5KhbK534XcDs6gnqGDal4o', 'ZER3DKMH']
 ];
+
+/**
+ * Tokens that still work but are no longer handed out - the other half of a rotation.
+ *
+ * Empty is the normal state. A row lives here only for as long as somebody might still have
+ * the old link open, and deleting it is what finally closes that link.
+ *
+ *   'OLDTOKEN': '1ljm-gzjs3UgJB-fuNghADJn_byl-CtHib0APSNol2T0',
+ */
+const RETIRED_LINK_TOKENS = {};
+
+/**
+ * The Sheet a link token points at, or '' if it points at nothing.
+ *
+ * Matched without regard to case, because these get read off a screen and typed back in.
+ * The alphabet they are built from has no 0/O/1/I/L/S in it for the same reason.
+ */
+function sheetIdForToken_(token) {
+  const key = String(token || '').trim().toUpperCase();
+  if (!key) return '';
+
+  const level = LEVEL_SHEET_IDS.filter(function (entry) { return entry[2] === key; })[0];
+  if (level) return level[1];
+
+  return RETIRED_LINK_TOKENS[key] || '';
+}
+
+/** The token to publish for a Sheet, or the raw ID if that Sheet has none. */
+function linkTokenFor_(sheetId) {
+  const level = LEVEL_SHEET_IDS.filter(function (entry) { return entry[1] === sheetId; })[0];
+  return level ? level[2] : sheetId;
+}
 
 // Judge and Team entries start on this row, one blank row under their headers.
 const CONFIG_ENTRY_START_ROW = 6;
@@ -399,7 +440,10 @@ function buildConfigTemplate_(levelTitle, sheetId, config) {
   rows.push(['', '', '', '', 'Google Sheet', 'Scoresheet URL']);
 
   LEVEL_SHEET_IDS.forEach(function (entry) {
-    rows.push(['', '', '', entry[0], SHEET_URL_PREFIX + entry[1], SCORESHEET_URL_PREFIX + entry[1]]);
+    // The Google Sheet column is the file itself and stays an ID; the scoresheet link is
+    // what gets handed out, and that one carries the token.
+    rows.push(['', '', '', entry[0], SHEET_URL_PREFIX + entry[1],
+      SCORESHEET_URL_PREFIX + entry[2]]);
   });
 
   return { rows: rows, blockRows: blockRows, directoryRow: directoryRow };
@@ -867,10 +911,23 @@ function doPost(e) {
   }
 }
 
+/**
+ * Whatever a link carried, as a Sheet ID.
+ *
+ * A token first, because that is the only form a published link uses now and the only form
+ * that is not already an ID. A raw ID or a full Sheets URL still resolves: links printed
+ * before the tokens existed go on working, and an event is a bad time to invalidate a link
+ * somebody has already opened. Tightening that to tokens only is one deletion, whenever the
+ * old links are known to be gone.
+ */
 function resolveSheetId_(input) {
   if (!input) return DEFAULT_SHEET_ID;
   const str = String(input).trim();
-  // If user passed a full URL, extract the ID between /d/ and /
+
+  const mapped = sheetIdForToken_(str);
+  if (mapped) return mapped;
+
+  // A full URL: take the ID between /d/ and the next /.
   const match = str.match(/\/d\/([a-zA-Z0-9-_]+)/);
   if (match) return match[1];
   return str;
