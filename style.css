@@ -475,6 +475,32 @@ body {
 /* A value the mask accepted and the rules did not: seconds past 59, or a run longer than
    the two minutes it is allowed. The digits go red too, not just the frame - the frame says
    "this field", the digits say "this number". */
+/* Time is the one control that answers back, so its cell stacks instead of sitting in a
+   row. Every other row in the panel holds a single control and is left as it was. */
+.entry-row-time .entry-cell {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 3px;
+}
+
+/* The reason the box went red, in words. A red border says something is wrong; it does not
+   say what, and on six characters typed under time pressure that is the whole message. */
+.entry-error {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #dc2626;
+}
+
+/* Spelt out because .entry-cell > * makes every child a flex item, and a display set that
+   way is not what `hidden` expects to be overriding. Without it the row keeps an empty
+   line standing by for an error that may never come. */
+.entry-error[hidden] {
+  display: none;
+}
+
 .entry-row input[aria-invalid="true"] {
   border-color: #dc2626;
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.16);

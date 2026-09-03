@@ -1292,9 +1292,29 @@ const SynapseScoresheet = (() => {
    * is one the judge stopped typing halfway through, and a hundredth filled in as .00 is a
    * result nobody timed.
    */
+  /**
+   * The typed time with an x standing in for every digit still missing, so '1:23.4' reads
+   * back as '1:23.4x'.
+   *
+   * Naming the shape beats naming the rule. "Time must be written in full, m:ss.ss" asks
+   * the reader to compare what they typed against a template; this hands them their own
+   * value with the gap marked, and there is nothing left to work out.
+   */
+  function missionTimeShape_(value) {
+    const parts = /^(\d{0,2}):?(\d{0,2})\.?(\d{0,2})$/.exec(String(value).trim());
+    if (!parts) return '';
+
+    const pad = (part, size) => (part + 'xx').slice(0, size);
+    return pad(parts[1], parts[1].length > 1 ? 2 : 1) + ':' + pad(parts[2], 2)
+      + '.' + pad(parts[3], 2);
+  }
+
   function missionTimeError_(value) {
     const match = /^(\d{1,2}):(\d{2})\.(\d{2})$/.exec(String(value).trim());
-    if (!match) return 'Time must be written in full, m:ss.ss.';
+    if (!match) {
+      const shape = missionTimeShape_(value);
+      return (shape ? shape + ' - ' : '') + 'Incomplete time';
+    }
 
     const minutes = Number(match[1]);
     const seconds = Number(match[2]);
@@ -1337,7 +1357,12 @@ const SynapseScoresheet = (() => {
     applyConsentLock_();
   }
 
-  /** Red on the field, or not, from one place - three callers ask the same question. */
+  /**
+   * Red on the field and the reason under it, from one place - three callers ask this.
+   *
+   * A red border says something is wrong; it does not say what. On a box holding six
+   * characters typed under time pressure, that difference is the whole message.
+   */
   function markMissionTime_(input) {
     if (!input) return '';
 
@@ -1345,7 +1370,17 @@ const SynapseScoresheet = (() => {
     if (error) input.setAttribute('aria-invalid', 'true');
     else input.removeAttribute('aria-invalid');
 
+    showMissionTimeError_(error);
     return error;
+  }
+
+  /** Hidden when there is nothing to say, so the row does not hold a gap waiting for one. */
+  function showMissionTimeError_(message) {
+    const line = document.getElementById('mission-time-error');
+    if (!line) return;
+
+    line.textContent = message || '';
+    line.hidden = !message;
   }
 
   function formatMissionTime(raw) {
@@ -2622,8 +2657,14 @@ const SynapseScoresheet = (() => {
         // Only once all five digits are in. Everything on the way to '1:23.45' is missing
         // some of them, and red for a time still being typed would be wrong. What the mask
         // still lets through - '2:75.00', or a time past the limit - turns red on blur.
-        if (/^\d{1,2}:\d{2}\.\d{2}$/.test(timeInput.value)) markMissionTime_(timeInput);
-        else timeInput.removeAttribute('aria-invalid');
+        if (/^\d{1,2}:\d{2}\.\d{2}$/.test(timeInput.value)) {
+          markMissionTime_(timeInput);
+        } else {
+          // Still being typed. Nothing is wrong yet, so nothing is said - the missing digits
+          // are named on blur, which is when leaving it half-typed becomes the answer.
+          timeInput.removeAttribute('aria-invalid');
+          showMissionTimeError_('');
+        }
 
         saveDraft();
       });

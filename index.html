@@ -70,7 +70,10 @@
                numeric keypad, and pattern is what older iOS reads for the same thing. -->
           <input type="text" id="mission-time" class="entry-input" inputmode="numeric" pattern="[0-9]*"
                  value="2:00.00" placeholder="2:00.00" maxlength="7" autocomplete="off"
-                 aria-label="Time (m:ss.ss)">
+                 aria-label="Time (m:ss.ss)" aria-describedby="mission-time-error">
+          <!-- Written by showMissionTimeError_. role=alert so a screen reader is told the
+               reason as it appears, rather than the next time it passes through. -->
+          <p class="entry-error" id="mission-time-error" role="alert" hidden></p>
         </div>
       </div>
 
