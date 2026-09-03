@@ -906,6 +906,20 @@ body {
   opacity: 0.85;
 }
 
+/* Green, under the row that caused it. The same green the tickbox and a sent run use, so
+   one colour means one thing across the whole panel: settled. */
+.consent-locked {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #166534;
+}
+
+.consent-locked[hidden] {
+  display: none;
+}
+
 .consent-row input[type="checkbox"] {
   width: 22px;
   height: 22px;

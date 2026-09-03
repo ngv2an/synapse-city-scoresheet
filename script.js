@@ -1598,8 +1598,14 @@ const SynapseScoresheet = (() => {
    * the box back on cannot hand Submit over while the photo is still missing.
    */
   function applyConsentLock_() {
+    const agreed = hasConsent_();
+
     const photo = document.getElementById('btn-photo');
-    if (photo) photo.disabled = !hasConsent_();
+    if (photo) photo.disabled = !agreed;
+
+    // Said out loud, because everything else the tick does is something going away.
+    const locked = document.getElementById('consent-locked');
+    if (locked) locked.hidden = !agreed;
 
     setSubmitButtonState_(submitState);
     // And the other half of agreeing: the result stops being editable. Agreed to a set of
